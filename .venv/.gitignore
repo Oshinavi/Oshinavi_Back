@@ -32,4 +32,3 @@ android/app/build/
 *.pyc
 .DS_Store
 .env
-.venv/

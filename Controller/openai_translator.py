@@ -2,8 +2,6 @@ import openai
 from openai import AsyncOpenAI
 from datetime import datetime, timedelta
 
-openai.api_key = "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"
-
 SYSTEM_PROMPT_TEMPLATE = """
 You are an AI that processes Japanese tweets along with their timestamps.
 Tweet was posted on: {timestamp}
@@ -19,7 +17,7 @@ Your tasks are:
 Format your response as: 번역문 / 분류 / 날짜정보 또는 None
 """
 
-client = AsyncOpenAI(api_key="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")  # 기존 openai.api_key 설정 대신 객체 생성
+client = AsyncOpenAI(api_key="api_key")  # 기존 openai.api_key 설정 대신 객체 생성
 
 async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> dict:
     try:
