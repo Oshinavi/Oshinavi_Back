@@ -6,8 +6,8 @@ from twikit import Client
 from datetime import datetime, timezone
 
 # 설정 값
-COOKIE_FILE = "../config/twitter_cookies.json"
-CSV_FILE = "../csv/tweets_test_link.csv"
+COOKIE_FILE = "../../X_Translator/config/twitter_cookies.json"
+CSV_FILE = "../../X_Translator/csv/tweets_test_link.csv"
 SCREENNAME = "hasunosora_SIC"
 
 # TARGET_DATE를 오프셋이 있는 datetime으로 변환

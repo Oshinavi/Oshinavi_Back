@@ -1,4 +1,3 @@
-import openai
 from openai import AsyncOpenAI
 from datetime import datetime, timedelta
 
@@ -17,7 +16,7 @@ Your tasks are:
 Format your response as: 번역문 / 분류 / 날짜정보 또는 None
 """
 
-client = AsyncOpenAI(api_key="api_key")  # 기존 openai.api_key 설정 대신 객체 생성
+client = AsyncOpenAI(api_key="openai_api")
 
 async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> dict:
     try:

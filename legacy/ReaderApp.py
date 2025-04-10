@@ -3,7 +3,7 @@ import pandas as pd
 import schedule
 import time
 # configure X(Twitter) bearer api token
-bearer_token = "AAAAAAAAAAAAAAAAAAAAAL5hzwEAAAAAZVtbtbkRAx9wES7idYBtMAuGEHY%3DBJR0NexAaBzNgvrVNW2Df9HeRAhKWSERxNPumstSy0oKeuBacH"
+bearer_token = "tweet_token"
 
 # generate Tweepy Client
 client = tweepy.Client(bearer_token=bearer_token)

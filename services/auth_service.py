@@ -5,8 +5,10 @@ from repository.user_repository import (
     create_user,
     create_tweet_user
 )
-from utils.twitter_client import get_twitter_id_by_username
+
 from flask_jwt_extended import create_access_token
+from services.tweet_client_service import TwitterClientService
+from utils.async_utils import run_async
 
 def signup_user(data):
     required_fields = ["username", "email", "password", "cfpassword", "tweetId"]
@@ -20,8 +22,10 @@ def signup_user(data):
         return jsonify({"error": "User already exists"}), 409
 
     # 트위터 ID 확인
-    tweet_internal_id = get_twitter_id_by_username(data["tweetId"])
-    if tweet_internal_id is None:
+    twitter_service = TwitterClientService()
+    try:
+        tweet_internal_id, _ = run_async(twitter_service.get_user_id(data["tweetId"]))
+    except Exception:
         return jsonify({"error": "존재하지 않는 유저입니다"}), 404
 
     user = create_user(

@@ -6,7 +6,7 @@ from twikit import Client
 from datetime import datetime, timezone
 
 # 설정 값
-COOKIE_FILE = "../config/twitter_cookies.json"
+COOKIE_FILE = "../../X_Translator/config/twitter_cookies.json"
 CSV_FILE = "../csv/tweets_3.csv"
 SCREENNAME = "Shumo_dev"
 

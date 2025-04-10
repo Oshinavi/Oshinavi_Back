@@ -2,7 +2,7 @@ import pandas as pd
 import random
 import glob
 
-DATASET_PATH = "../csv/dataset.csv"
+DATASET_PATH = "../../X_Translator/csv/dataset.csv"
 
 # n개의 CSV 파일 가져오기
 csv_files = glob.glob("../csv/*.csv")  # 원하는 폴더 경로 설정
