@@ -5,32 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="109ce9cc-b9e4-45b3-80a9-ebf285e94db0" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/services/tweet_client_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/tweet_user_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/translate_japanese_tweet.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Controller/openai_translator.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/openai_translator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Controller/tweet_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/Controller/tweet_controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Controller/twitter_login.py" beforeDir="false" afterPath="$PROJECT_DIR$/legacy/twitter_login.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Reader/ReaderApp.py" beforeDir="false" afterPath="$PROJECT_DIR$/legacy/ReaderApp.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Reader/tweetreader.py" beforeDir="false" afterPath="$PROJECT_DIR$/legacy/tweetreader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/repository/tweet_repository.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/calculatetokensum.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/csvtojsonl.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/jsontofinetune.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/mergecsv.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/test.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/tweet.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/twikit_crawler.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Translator/twikit_crawler_2.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/legacy/auth.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/tweet_profile_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/legacy/tweet_profile_controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/routes/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/auth_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/auth_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/tweet_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/tweet_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/twitter_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/twitter_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.venv/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.venv/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/tweet_client_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/tweet_client_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -144,7 +121,7 @@
       <workItem from="1742188375745" duration="2546000" />
       <workItem from="1742391864001" duration="62984000" />
       <workItem from="1742921844114" duration="96500000" />
-      <workItem from="1744194481805" duration="21957000" />
+      <workItem from="1744194481805" duration="22456000" />
     </task>
     <servers />
   </component>
