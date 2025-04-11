@@ -1,20 +1,24 @@
-# Python
+# Python 관련
 __pycache__/
 *.py[cod]
 *.egg-info/
 
-# 환경 파일
+# 환경설정 파일 (API 키 등)
 config/settings.env
 
 # 비공개 데이터
 *.csv
 *.json
+legacy/
+csv/
+Dataset/
+Reader/
 
 # 가상 환경
 .venv/
 .env/
 
-# Flutter
+# Flutter 관련
 build/
 .dart_tool/
 .flutter-plugins
@@ -22,8 +26,9 @@ build/
 .packages
 pubspec.lock
 
-legacy/
-csv/
-Dataset/
-Reader/
+# IDE 관련
+.idea/
+.vscode/
 
+# macOS 관련
+.DS_Store
