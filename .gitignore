@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 환경 파일
+config/settings.env
+
+# 비공개 데이터
+*.csv
+*.json
+
+# 가상 환경
+.venv/
+.env/
+
+# Flutter
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+
+legacy/
+csv/
+Dataset/
+Reader/
+
