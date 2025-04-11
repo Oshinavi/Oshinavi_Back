@@ -17,6 +17,8 @@ class TwitterUserService:
                     "id": user_info.id,
                     "username": user_info.name,
                     "bio": user_info.description,
+                    "profile_image_url": user_info.profile_image_url,
+                    "profile_banner_url": user_info.profile_banner_url,
                 }
             return None
         except Exception as e:

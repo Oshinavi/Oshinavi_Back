@@ -1,10 +1,11 @@
 from flask_jwt_extended import JWTManager
-from Controller.tweet_controller import tweet_bp
 from db import create_app
-from routes.auth_controller import auth_bp
-from routes.protected import protected_bp
+from Controller.auth_controller import auth_bp
+from Controller.protected import protected_bp
+from Controller.tweet_controller import tweet_bp
+from Controller.user_controller import user_bp
 from jwt_blocklist import jwt_blocklist  # 블랙리스트 가져오기
-from routes.user import user_bp
+
 
 app = create_app()
 jwt = JWTManager(app)
