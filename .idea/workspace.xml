@@ -22,6 +22,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "Shumoyed"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/Shumoyed/MediaProj_2025_Back.git",
+    "accountId": "8692a869-2e48-4087-9eeb-38734a419496"
+  }
+}]]></component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 6
 }</component>
@@ -51,7 +63,7 @@
     "Python.user.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "new-main",
+    "git-widget-placeholder": "main",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -121,7 +133,7 @@
       <workItem from="1742391864001" duration="62984000" />
       <workItem from="1742921844114" duration="96500000" />
       <workItem from="1744194481805" duration="22456000" />
-      <workItem from="1744261975397" duration="21696000" />
+      <workItem from="1744261975397" duration="22319000" />
     </task>
     <servers />
   </component>
