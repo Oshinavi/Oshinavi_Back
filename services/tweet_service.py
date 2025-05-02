@@ -24,13 +24,17 @@ class TweetService:
         if not user_info:
             raise ValueError(f"User {screen_name} not found")
 
-        user_id = str(user_info['id'])
-        username = user_info['username']
+        author_internal_id = str(user_info['id'])
         profile_image_url = user_info['profile_image_url']
         client = self.twitter_client.get_client()
 
+        # user_id = str(user_info['id'])
+        # username = user_info['username']
+        # profile_image_url = user_info['profile_image_url']
+        # client = self.twitter_client.get_client()
+
         ## 트위터 게시글 스크래핑
-        tweets = await client.get_user_tweets(user_id=user_id, tweet_type='Tweets', count=10)
+        tweets = await client.get_user_tweets(user_id=author_internal_id, tweet_type='Tweets', count=10)
         print(f" {len(tweets)}개의 트윗 수신됨")
         existing_ids = self.repo.get_existing_tweet_ids()
         new_posts = []
@@ -46,7 +50,7 @@ class TweetService:
                 print(f" 트윗 {tweet.id} 날짜 파싱 실패로 저장 안 됨")
                 continue
 
-            ## GPT API로 트윗 번역
+            ## GPT API로 트윗 번역 및 포함일시 파싱
             translated_data = await translate_japanese_tweet(tweet.full_text, parsed_date)
 
             included_dt = None
@@ -59,13 +63,12 @@ class TweetService:
             ## db에 새 포스트 저장
             post = self.repo.save_post(
                 tweet_id=tweet.id,
-                tweet_userid=str(user_id),
-                tweet_username=username,
+                author_internal_id=author_internal_id,
                 tweet_date=parsed_date,
                 tweet_included_date=included_dt,
                 tweet_text=tweet.full_text,
                 tweet_translated_text=translated_data["translated"],
-                tweet_about=translated_data["category"]
+                tweet_about=translated_data["category"],
             )
             new_posts.append(post)
 
@@ -74,19 +77,24 @@ class TweetService:
             print(f" {len(new_posts)}개의 새 트윗 저장 완료")
 
         ## 지정된 개수 트윗 반환
-        recent_posts = self.repo.get_recent_posts_by_username(username=username, limit=20)
+        recent_posts = self.repo.get_recent_posts_by_username(
+            username=screen_name,
+            limit=20
+        )
+
         return [
             {
                 "tweet_id": str(p.tweet_id),
-                "tweet_userid": p.tweet_userid,
-                "tweet_username": p.tweet_username,
+                "tweet_userid": p.author.twitter_id,
+                "tweet_username": p.author.username,
                 "tweet_date": p.tweet_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "tweet_included_date": p.tweet_included_date.strftime("%Y-%m-%d %H:%M:%S") if p.tweet_included_date else None,
                 "tweet_text": p.tweet_text,
                 "tweet_translated_text": p.tweet_translated_text,
                 "tweet_about": p.tweet_about,
                 "profile_image_url": profile_image_url,
-            } for p in recent_posts
+            }
+            for p in recent_posts
         ]
 
     ## KST 시간에 맞게 datetime 형식 변환

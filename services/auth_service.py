@@ -23,19 +23,30 @@ def signup_user(data):
     # 트위터 ID 확인
     twitter_client = TwitterClientService()
     twitter_user = TwitterUserService(twitter_client)
+
+    if not run_async(twitter_user.user_exists(data["tweetId"])):
+        return jsonify({"error": "User does not exist"}), 404
+
     try:
         tweet_internal_id = run_async(twitter_user.get_user_id(data["tweetId"]))
     except Exception:
         return jsonify({"error": "존재하지 않는 유저입니다"}), 404
 
+    existing_user = user_repo.get_twitter_user_by_internal_id(tweet_internal_id)
+    if not existing_user:
+        user_repo.create_twitter_user(
+            twitter_internal_id=tweet_internal_id,
+            twitter_id=data["tweetId"],
+            username=data["username"]
+        )
+
     user = user_repo.create_user(
         username=data["username"],
         email=data["email"],
         password_hash=generate_password_hash(data["password"]),
-        tweet_id=data["tweetId"]
+        twitter_user_internal_id=tweet_internal_id
     )
 
-    # create_tweet_user(user_id=user.id, tweet_id=data["tweetId"], tweet_internal_id=tweet_internal_id)
     return jsonify({"message": "회원가입 성공"}), 201
 
 # 유저 로그인
