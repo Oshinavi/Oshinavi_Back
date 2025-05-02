@@ -98,3 +98,15 @@ class TweetLikes(db.Model):
         self.tweet_id = tweet_id
         self.tweet_userid = tweet_userid
         self.liked_at = liked_at
+
+
+
+
+# 리플라이 로그 저장소
+class ReplyLog(db.Model):
+    __tablename__ = "reply_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tweet_id = db.Column(db.String(64), nullable=False)
+    reply_text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())

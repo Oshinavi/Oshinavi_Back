@@ -1,8 +1,3 @@
-# Python 관련
-__pycache__/
-*.py[cod]
-*.egg-info/
-
 # 환경설정 파일 (API 키 등)
 config/settings.env
 

@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
+import re
 
 from services.openai_translator import translate_japanese_tweet
+from services.openai_reply_creator import reply_generator
 from repository.tweet_repository import TweetRepository
 from services.tweet_client_service import TwitterClientService
 from services.tweet_user_service import TwitterUserService
@@ -24,7 +26,7 @@ class TweetService:
 
         user_id = str(user_info['id'])
         username = user_info['username']
-        profileimageurl = user_info['profile_image_url']
+        profile_image_url = user_info['profile_image_url']
         client = self.twitter_client.get_client()
 
         ## 트위터 게시글 스크래핑
@@ -83,7 +85,7 @@ class TweetService:
                 "tweet_text": p.tweet_text,
                 "tweet_translated_text": p.tweet_translated_text,
                 "tweet_about": p.tweet_about,
-                "profile_image_url": profileimageurl,
+                "profile_image_url": profile_image_url,
             } for p in recent_posts
         ]
 
@@ -96,3 +98,66 @@ class TweetService:
         except Exception as e:
             print(f" 날짜 파싱 실패: {dt_str} → {e}")
             return None
+
+    ## 글자수 제약 확인
+    def _calculate_tweet_length(self, text: str) -> int:
+        count = 0
+        for char in text:
+            # ASCII 문자 (영문, 숫자, 공백, 개행 등)
+            if re.match(r'^[\x00-\x7F]$', char):
+                count += 1
+            else:
+                count += 2
+        return count
+
+    async def send_reply(self, tweet_id: str, tweet_text: str) -> dict:
+        try:
+            await self.twitter_client.ensure_login()
+            client = self.twitter_client.get_client()
+
+            # 트윗 유효성 체크(글이 삭제되었을 때 대비)
+            tweet = await client.get_tweet_by_id(tweet_id)
+            if not tweet:
+                return {"success": False, "error": "해당 트윗이 존재하지 않습니다."}
+
+            # 길이 제한 (280 byte 넘는지 확인)
+            length = self._calculate_tweet_length(tweet_text)
+            if length > 280:
+                return {"success": False, "error": "트윗은 280자(글자 기준)를 초과할 수 없습니다."}
+
+            # 리플라이 전송
+            result = await client.create_tweet(text=tweet_text, reply_to=tweet_id)
+
+            # 리플라이 로그를 DB에 저장
+            self.repo.save_reply_log(tweet_id, tweet_text)
+
+            # 예외 없이 성공 시
+            return {"success": True, "message": "리플라이 전송 성공", "tweet_result": result}
+
+        except ValueError as ve:
+            print(f"입력 값 오류: {ve}")
+            return {"success": False, "error": f"입력 오류: {ve}"}
+
+        except TimeoutError:
+            print("네트워크 타임아웃 발생")
+            return {"success": False, "error": "네트워크 타임아웃이 발생했습니다."}
+
+        except Exception as e:
+            print(f"알 수 없는 오류 발생: {e}")
+            return {"success": False, "error": f"예외 발생: {str(e)}"}
+
+    ## OpenAI API를 이용하여 답변 자동 생성
+    async def generate_auto_reply(self, tweet_text: str) -> str:
+        try:
+            generated_reply = await reply_generator(tweet_text)
+
+            # 생성된 리플라이가 비어있는 경우
+            if not generated_reply:
+                print("응답이 비어 있습니다.")
+                return "（리플라이 생성에 실패했습니다.）"
+
+            return generated_reply
+
+        except Exception as e:
+            print(f"자동 리플라이 생성 오류: {e}")
+            return "（리플라이 생성 중 에러가 발생했습니다.）"

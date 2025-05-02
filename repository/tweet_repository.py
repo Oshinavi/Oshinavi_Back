@@ -1,4 +1,4 @@
-from models import db, Post
+from models import db, Post, ReplyLog
 
 # 트윗(포스트) 정보 관련 DB 트랜잭션 정의
 class TweetRepository:
@@ -39,3 +39,8 @@ class TweetRepository:
             .order_by(Post.tweet_date.desc()) \
             .limit(limit) \
             .all()
+
+    def save_reply_log(self, tweet_id: str, reply_text: str):
+        log = ReplyLog(tweet_id=tweet_id, reply_text=reply_text)
+        db.session.add(log)
+        db.session.commit()
