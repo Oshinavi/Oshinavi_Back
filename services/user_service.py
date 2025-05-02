@@ -29,7 +29,9 @@ class UserService:
 
     def get_user_tweet_id(self, email: str) -> str | None:
         user = self.user_repo.find_user_by_email(email)
-        return user.tweet_id if user else None
+        if not user or user.twitter_user is None:
+            return None
+        return user.twitter_user.twitter_id
 
     def get_oshi(self, email: str):
         # 이메일로 유저 정보 조회
