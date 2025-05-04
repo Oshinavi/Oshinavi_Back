@@ -4,7 +4,7 @@ from jwt_blocklist import jwt_blocklist
 
 protected_bp = Blueprint("protected", __name__)
 
-@protected_bp.route("/api/protected", methods=["GET"])
+@protected_bp.route("/protected", methods=["GET"])
 @jwt_required()
 def protected():
     current_user = get_jwt_identity()

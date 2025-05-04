@@ -1,11 +1,16 @@
+import logging
 from datetime import datetime, timedelta
 import re
 
-from services.openai_translator import translate_japanese_tweet
-from services.openai_reply_creator import reply_generator
 from repository.tweet_repository import TweetRepository
 from services.tweet_client_service import TwitterClientService
 from services.tweet_user_service import TwitterUserService
+from services.openai_translator import translate_japanese_tweet
+from services.openai_reply_creator import reply_generator
+from services.exceptions import NotFoundError, BadRequestError, ApiError
+from models import Post, ReplyLog
+
+logger = logging.getLogger(__name__)
 
 # 트위터 트랜잭션 로직 관리
 class TweetService:
@@ -15,87 +20,148 @@ class TweetService:
         self.twitter_user = TwitterUserService(self.twitter_client)
 
     ## 최신 트윗을 가져와 db에 저장 및 반환
-    async def fetch_and_store_latest_tweets(self, screen_name: str):
+    async def fetch_and_store_latest_tweets(self, screen_name: str) -> list[dict]:
 
         ## 트위터 유저 정보 취득
         await self.twitter_client.ensure_login()
         user_info = await self.twitter_user.get_user_info(screen_name)
 
         if not user_info:
-            raise ValueError(f"User {screen_name} not found")
+            raise NotFoundError(f"User {screen_name} not found")
 
         author_internal_id = str(user_info['id'])
         profile_image_url = user_info['profile_image_url']
-        client = self.twitter_client.get_client()
-
-        # user_id = str(user_info['id'])
-        # username = user_info['username']
-        # profile_image_url = user_info['profile_image_url']
-        # client = self.twitter_client.get_client()
 
         ## 트위터 게시글 스크래핑
-        tweets = await client.get_user_tweets(user_id=author_internal_id, tweet_type='Tweets', count=10)
-        print(f" {len(tweets)}개의 트윗 수신됨")
-        existing_ids = self.repo.get_existing_tweet_ids()
+        client = self.twitter_client.get_client()
+        tweets = await client.get_user_tweets(
+            user_id=author_internal_id,
+            tweet_type='Tweets',
+            count=10
+        )
+        logger.debug(f"{len(tweets)} tweets fetched for {screen_name}")
+
+        existing = self.repo.list_tweet_ids()
         new_posts = []
 
         ## 이미 db에 저장된 트윗 제외
-        for tweet in tweets:
-            if str(tweet.id) in existing_ids:
-                print(f" 중복된 트윗 무시: {tweet.id}")
+        for t in tweets:
+            if str(t.id) in existing:
+                logger.debug(f"Duplicate tweet ignored: {t.id}")
                 continue
 
-            parsed_date = self._parse_twitter_datetime(tweet.created_at)
-            if not parsed_date:
-                print(f" 트윗 {tweet.id} 날짜 파싱 실패로 저장 안 됨")
+            parsed = self._parse_twitter_datetime(t.created_at)
+            if not parsed:
+                logger.warning(f"Failed to parse date for tweet {t.id}")
                 continue
 
             ## GPT API로 트윗 번역 및 포함일시 파싱
-            translated_data = await translate_japanese_tweet(tweet.full_text, parsed_date)
+            translated = await translate_japanese_tweet(t.full_text, parsed)
 
             included_dt = None
-            if translated_data["datetime"]:
+            if translated["datetime"]:
                 try:
-                    included_dt = datetime.strptime(translated_data["datetime"], "%Y.%m.%d %H:%M:%S")
+                    included_dt = datetime.strptime(translated["datetime"], "%Y.%m.%d %H:%M:%S")
                 except Exception as e:
-                    print(f"⚠ included_date 파싱 실패: {translated_data['datetime']} → {e}")
+                    raise ApiError(f"날짜 파싱 실패: {translated['datetime']}")
 
             ## db에 새 포스트 저장
-            post = self.repo.save_post(
-                tweet_id=tweet.id,
+            post = Post(
+                tweet_id=t.id,
                 author_internal_id=author_internal_id,
-                tweet_date=parsed_date,
+                tweet_date=parsed,
                 tweet_included_date=included_dt,
-                tweet_text=tweet.full_text,
-                tweet_translated_text=translated_data["translated"],
-                tweet_about=translated_data["category"],
+                tweet_text=t.full_text,
+                tweet_translated_text=translated["translated"],
+                tweet_about=translated["category"]
             )
+            self.repo.add_post(post)
             new_posts.append(post)
 
-        if new_posts:
-            self.repo.save_all(new_posts)
-            print(f" {len(new_posts)}개의 새 트윗 저장 완료")
+        # 트윗 반환
+        try:
+            if new_posts:
+                self.repo.commit()
+                logger.debug(f" {len(new_posts)}개의 새 트윗 저장 완료")
+            posts = self.repo.list_by_username(screen_name)
+            return [
+                {
+                    "tweet_id": str(p.tweet_id),
+                    "tweet_userid": p.author.twitter_id,
+                    "tweet_username": p.author.username,
+                    "tweet_date": p.tweet_date.strftime("%Y-%m-%d %H:%M:%S"),
+                    "tweet_included_date": p.tweet_included_date.strftime(
+                        "%Y-%m-%d %H:%M:%S") if p.tweet_included_date else None,
+                    "tweet_text": p.tweet_text,
+                    "tweet_translated_text": p.tweet_translated_text,
+                    "tweet_about": p.tweet_about,
+                    "profile_image_url": profile_image_url,
+                }
+                for p in posts
+            ]
+        except Exception as e:
+            logger.error(f"DB 커밋 오류: {e}")
+            self.repo.rollback()
+            raise
 
-        ## 지정된 개수 트윗 반환
-        recent_posts = self.repo.get_recent_posts_by_username(
-            username=screen_name,
-            limit=20
-        )
+    async def send_reply(self, tweet_id: str, tweet_text: str) -> dict:
+        # 1) 로그인 보장
+        await self.twitter_client.ensure_login()
+        client = self.twitter_client.get_client()
 
-        return [
-            {
-                "tweet_id": str(p.tweet_id),
-                "tweet_userid": p.author.twitter_id,
-                "tweet_username": p.author.username,
-                "tweet_date": p.tweet_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "tweet_included_date": p.tweet_included_date.strftime("%Y-%m-%d %H:%M:%S") if p.tweet_included_date else None,
-                "tweet_text": p.tweet_text,
-                "tweet_translated_text": p.tweet_translated_text,
-                "tweet_about": p.tweet_about,
-                "profile_image_url": profile_image_url,
-            }
-            for p in recent_posts
-        ]
+        # 2) 원본 트윗 확인
+        tweet = await client.get_tweet_by_id(tweet_id)
+        if not tweet:
+            raise NotFoundError("해당 트윗이 존재하지 않습니다.")
+
+        # 3) 길이 제한
+        length = self._calculate_tweet_length(tweet_text)
+        if length > 280:
+            raise BadRequestError("280자(글자 기준)를 초과할 수 없습니다.")
+
+        # 4) 실제 전송 시도
+        try:
+            api_tweet = await client.create_tweet(text=tweet_text, reply_to=tweet_id)
+        except Exception as e:
+            msg = str(e)
+            # 중복 리플라이 에러를 400으로 변환
+            if "duplicate" in msg.lower() or "187" in msg:
+                raise BadRequestError("이미 동일한 리플라이를 보냈습니다.")
+            # 기타 예외는 500으로
+            raise ApiError(f"리플라이 전송 중 오류: {msg}")
+
+        # 5) JSON-serializable 형태로 변환
+        tweet_info = {
+            "reply_tweet_id": str(api_tweet.id),
+            "created_at": api_tweet.created_at,
+            "text": api_tweet.text,
+        }
+
+        # 6) DB에 로그 남기기
+        log = ReplyLog(post_tweet_id=tweet_id, reply_text=tweet_text)
+        self.repo.add_reply_log(log)
+        try:
+            self.repo.commit()
+        except Exception as e:
+            logger.error(f"리플라이 로그 커밋 실패: {e}")
+            self.repo.rollback()
+
+        # 7) 결과 반환
+        return {
+            "success": True,
+            "message": "리플라이 전송 성공",
+            "tweet_result": tweet_info
+        }
+
+    ## OpenAI API를 이용하여 답변 자동 생성
+    async def generate_auto_reply(self, tweet_text: str) -> str:
+        generated_reply = await reply_generator(tweet_text)
+
+        # 생성된 리플라이가 비어있는 경우
+        if not generated_reply:
+            logger.error("응답이 비어 있습니다.")
+            raise ApiError("리플라이 생성에 실패했습니다.")
+        return generated_reply
 
     ## KST 시간에 맞게 datetime 형식 변환
     def _parse_twitter_datetime(self, dt_str: str) -> str | None:
@@ -117,55 +183,3 @@ class TweetService:
             else:
                 count += 2
         return count
-
-    async def send_reply(self, tweet_id: str, tweet_text: str) -> dict:
-        try:
-            await self.twitter_client.ensure_login()
-            client = self.twitter_client.get_client()
-
-            # 트윗 유효성 체크(글이 삭제되었을 때 대비)
-            tweet = await client.get_tweet_by_id(tweet_id)
-            if not tweet:
-                return {"success": False, "error": "해당 트윗이 존재하지 않습니다."}
-
-            # 길이 제한 (280 byte 넘는지 확인)
-            length = self._calculate_tweet_length(tweet_text)
-            if length > 280:
-                return {"success": False, "error": "트윗은 280자(글자 기준)를 초과할 수 없습니다."}
-
-            # 리플라이 전송
-            result = await client.create_tweet(text=tweet_text, reply_to=tweet_id)
-
-            # 리플라이 로그를 DB에 저장
-            self.repo.save_reply_log(tweet_id, tweet_text)
-
-            # 예외 없이 성공 시
-            return {"success": True, "message": "리플라이 전송 성공", "tweet_result": result}
-
-        except ValueError as ve:
-            print(f"입력 값 오류: {ve}")
-            return {"success": False, "error": f"입력 오류: {ve}"}
-
-        except TimeoutError:
-            print("네트워크 타임아웃 발생")
-            return {"success": False, "error": "네트워크 타임아웃이 발생했습니다."}
-
-        except Exception as e:
-            print(f"알 수 없는 오류 발생: {e}")
-            return {"success": False, "error": f"예외 발생: {str(e)}"}
-
-    ## OpenAI API를 이용하여 답변 자동 생성
-    async def generate_auto_reply(self, tweet_text: str) -> str:
-        try:
-            generated_reply = await reply_generator(tweet_text)
-
-            # 생성된 리플라이가 비어있는 경우
-            if not generated_reply:
-                print("응답이 비어 있습니다.")
-                return "（리플라이 생성에 실패했습니다.）"
-
-            return generated_reply
-
-        except Exception as e:
-            print(f"자동 리플라이 생성 오류: {e}")
-            return "（리플라이 생성 중 에러가 발생했습니다.）"

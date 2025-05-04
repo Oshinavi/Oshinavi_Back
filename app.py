@@ -1,4 +1,6 @@
 from flask_jwt_extended import JWTManager
+
+from Controller.schedule_controller import schedule_bp
 from db import create_app
 from Controller.auth_controller import auth_bp
 from Controller.protected import protected_bp
@@ -18,9 +20,10 @@ def check_if_token_in_blacklist(jwt_header, jwt_payload):
 
 # 블루프린트 등록
 app.register_blueprint(auth_bp, url_prefix='/api')
-app.register_blueprint(protected_bp, url_prefix='/api')
-app.register_blueprint(user_bp, url_prefix='/api')
-app.register_blueprint(tweet_bp, url_prefix='/api')
+app.register_blueprint(protected_bp, url_prefix='/api/protected')
+app.register_blueprint(user_bp, url_prefix='/api/users')
+app.register_blueprint(tweet_bp, url_prefix='/api/tweets')
+app.register_blueprint(schedule_bp, url_prefix='/api/schedules')
 
 
 if __name__ == "__main__":

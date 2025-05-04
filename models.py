@@ -33,6 +33,12 @@ class User(db.Model):
         uselist=False
     )
 
+    schedules = db.relationship(
+        'Schedule',
+        back_populates='creator',
+        cascade='all, delete-orphan'
+    )
+
     def __init__(self, username, email, password, twitter_user_internal_id=None):
         self.username = username
         self.email    = email
@@ -70,6 +76,12 @@ class TwitterUser(db.Model):
     posts = db.relationship(
         'Post',
         back_populates='author',
+        cascade='all, delete-orphan'
+    )
+
+    schedules = db.relationship(
+        'Schedule',
+        back_populates='related_twitter_user',
         cascade='all, delete-orphan'
     )
 
@@ -197,3 +209,53 @@ class ReplyLog(db.Model):
     def __init__(self, post_tweet_id, reply_text):
         self.post_tweet_id = post_tweet_id
         self.reply_text    = reply_text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7) 등록한 일정 정보
+# ─────────────────────────────────────────────────────────────────────────────
+class Schedule(db.Model):
+    __tablename__ = 'schedules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    start_at = db.Column(db.DateTime, nullable=False)
+    end_at = db.Column(db.DateTime, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    # 일정과 관련된 사람 → TwitterUser 테이블의 twitter_internal_id 참조
+    related_twitter_internal_id = db.Column(
+        db.String(120),
+        db.ForeignKey('twitter_user.twitter_internal_id'),
+        nullable=True
+    )
+
+    # 해당 일정을 등록한 사람 → User 테이블의 id 참조
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('user.id'),
+        nullable=False
+    )
+
+    # 관계 설정
+    related_twitter_user = db.relationship(
+        'TwitterUser',
+        back_populates='schedules',
+        foreign_keys=[related_twitter_internal_id]
+    )
+    creator = db.relationship(
+        'User',
+        back_populates='schedules',
+        foreign_keys=[created_by_user_id]
+    )
+
+    def __init__(self, title, category, start_at, end_at, description,
+                 related_twitter_internal_id, created_by_user_id):
+        self.title = title
+        self.category = category
+        self.start_at = start_at
+        self.end_at = end_at
+        self.description = description
+        self.related_twitter_internal_id = related_twitter_internal_id
+        self.created_by_user_id = created_by_user_id
