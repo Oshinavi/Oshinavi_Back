@@ -135,7 +135,9 @@ class Post(db.Model):
         nullable=False
     )
     tweet_date = db.Column(db.DateTime, nullable=False)
-    tweet_included_date = db.Column(db.DateTime, nullable=True)
+    # 포함일시를 시작/종료로 분리
+    tweet_included_start_date = db.Column(db.DateTime, nullable=True)
+    tweet_included_end_date   = db.Column(db.DateTime, nullable=True)
     tweet_text = db.Column(db.Text, nullable=False)
     tweet_translated_text = db.Column(db.Text, nullable=False)
     tweet_about = db.Column(db.String(255), nullable=False)
@@ -147,11 +149,13 @@ class Post(db.Model):
     )
 
     def __init__(self, tweet_id, author_internal_id, tweet_date,
-                 tweet_included_date, tweet_text, tweet_translated_text, tweet_about):
+                 tweet_included_start_date, tweet_included_end_date,
+                 tweet_text, tweet_translated_text, tweet_about):
         self.tweet_id = tweet_id
         self.author_internal_id = author_internal_id
         self.tweet_date = tweet_date
-        self.tweet_included_date = tweet_included_date
+        self.tweet_included_start_date = tweet_included_start_date
+        self.tweet_included_end_date   = tweet_included_end_date
         self.tweet_text = tweet_text
         self.tweet_translated_text = tweet_translated_text
         self.tweet_about = tweet_about

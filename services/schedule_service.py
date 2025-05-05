@@ -1,4 +1,3 @@
-# services/schedule_service.py
 import logging
 import asyncio
 from datetime import datetime

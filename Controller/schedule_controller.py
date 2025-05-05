@@ -1,5 +1,3 @@
-# Controller/schedule_controller.py
-
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services.schedule_service import ScheduleService
@@ -8,29 +6,30 @@ from services.exceptions import ApiError
 from datetime import datetime
 
 schedule_bp = Blueprint('schedules', __name__)
-
 schedule_svc = ScheduleService()
 user_svc = UserService()
 
 def parse_iso8601(dt_str: str) -> datetime:
-    """
-    문자열 ISO8601 형식 → datetime 변환. 실패 시 ApiError(400) 발생.
-    """
     try:
         return datetime.fromisoformat(dt_str)
     except Exception:
         raise ApiError("날짜 형식이 잘못되었습니다. ISO8601 형식으로 보내주세요.", status_code=400)
 
 def _serialize_schedule(sched):
-    """SQLAlchemy Schedule 엔티티를 JSON 직렬화 가능한 dict로 변환."""
+    """Schedule 엔티티 → JSON dict 변환 (스크린네임 포함)"""
+    screen_name = None
+    if sched.related_twitter_user:
+        screen_name = sched.related_twitter_user.twitter_id
+
     return {
         'id': sched.id,
         'title': sched.title,
         'category': sched.category,
         'start_at': sched.start_at.isoformat(),
-        'end_at': sched.end_at.isoformat(),
+        'end_at':   sched.end_at.isoformat(),
         'description': sched.description,
         'related_twitter_internal_id': sched.related_twitter_internal_id,
+        'related_twitter_screen_name': sched.related_twitter_user.twitter_id if sched.related_twitter_user else None,
         'created_by_user_id': sched.created_by_user_id,
     }
 
@@ -40,7 +39,6 @@ def _serialize_schedule(sched):
 def create_schedule():
     data = request.get_json() or {}
     try:
-        # 1) 필수 필드 검증
         for field in (
             'title', 'category', 'start_at', 'end_at',
             'description', 'related_twitter_screen_name'
@@ -48,22 +46,19 @@ def create_schedule():
             if not data.get(field):
                 raise ApiError(f"필수 항목 '{field}'이(가) 누락되었습니다.", status_code=400)
 
-        # 2) 파싱
-        title = data['title']
+        title    = data['title']
         category = data['category']
         start_at = parse_iso8601(data['start_at'])
         end_at   = parse_iso8601(data['end_at'])
         description = data['description']
         screen_name = data['related_twitter_screen_name']
 
-        # 3) 현재 로그인한 사용자 조회
         user_email = get_jwt_identity()
         user = user_svc.user_repo.find_by_email(user_email)
         if not user:
             raise ApiError("사용자를 찾을 수 없습니다.", status_code=404)
         created_by_user_id = user.id
 
-        # 4) 서비스 호출
         sched = schedule_svc.create_schedule(
             title=title,
             category=category,
@@ -73,7 +68,6 @@ def create_schedule():
             related_twitter_screen_name=screen_name,
             created_by_user_id=created_by_user_id
         )
-
         return jsonify(_serialize_schedule(sched)), 201
 
     except ApiError as e:
@@ -106,7 +100,6 @@ def update_schedule(schedule_id: int):
         if not user:
             raise ApiError("사용자를 찾을 수 없습니다.", status_code=404)
 
-        # 업데이트할 필드 수집
         kwargs = {}
         if 'title' in data:    kwargs['title'] = data['title']
         if 'category' in data: kwargs['category'] = data['category']

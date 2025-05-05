@@ -5,7 +5,6 @@ from services.exceptions import NotFoundError
 logger = logging.getLogger(__name__)
 
 # 트위터 내 유저 정보 취득 로직
-
 class TwitterUserService:
     def __init__(self, client_service: TwitterClientService):
         self.client_service = client_service
@@ -25,10 +24,6 @@ class TwitterUserService:
             "profile_image_url": user_info.profile_image_url,
             "profile_banner_url": user_info.profile_banner_url,
         }
-            # return None
-        # except Exception as e:
-        #     print(f"유저 정보 불러오기 실패: {e}")
-        #     return None
 
     # username으로 해당 유저의 트위터 내부 id 조회 후 반환
     async def get_user_id(self, username: str) -> str:
