@@ -1,5 +1,5 @@
 # 환경설정 파일 (API 키 등)
-config/settings.env
+app/config/settings.env
 
 # 비공개 데이터
 *.csv
