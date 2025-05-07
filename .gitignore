@@ -27,3 +27,8 @@ pubspec.lock
 
 # macOS 관련
 .DS_Store
+
+# 캐시 디렉토리 파일
+__pycache__/
+*.py[cod]
+*.pyc
