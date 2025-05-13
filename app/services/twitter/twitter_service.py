@@ -7,8 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from app.repositories.tweet_repository import TweetRepository
 from app.services.twitter.client import TwitterClientService
 from app.services.twitter.user_service import TwitterUserService
-from app.services.ai.translator import translate_japanese_tweet
-from app.services.ai.reply_creator import generate_reply
+from app.services.ai.translate_service import translate_japanese_tweet
+from app.services.ai.reply_service import generate_reply
 from app.models.post import Post
 from app.models.reply_log import ReplyLog
 from app.utils.exceptions import NotFoundError, BadRequestError, ApiError

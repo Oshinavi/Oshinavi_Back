@@ -1,12 +1,22 @@
 import re
-from openai import AsyncOpenAI
-from typing import Optional, Dict
-from app.core.config import settings
 import logging
+from typing import Optional, Dict
+from app.utils.ollama_client import OllamaClient
+from app.services.ai.rag_service import RAGService
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """
+ollama = OllamaClient(settings.ollama_api_url, settings.ollama_model)
+
+rag = RAGService(
+    index_path="vector_store/faiss_index.bin",
+    meta_path="vector_store/metadata.json",
+    embedding_model_name="sentence-transformers/all-MiniLM-L6-v2",
+    top_k=3
+)
+
+SYSTEM_PROMPT = """
 You are an AI that processes Japanese tweets along with their timestamps.
 Tweet was posted on: {timestamp}
 
@@ -34,8 +44,6 @@ Format your response exactly as:
   번역문 / 분류 / 시작 일자 / 종료 일자
 """
 
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
 
 async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> Dict[str, Optional[str]]:
     """
@@ -45,20 +53,21 @@ async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> Dic
     :param tweet_timestamp: 트윗의 원본 타임스탬프
     :return: 번역, 분류, 시작일, 종료일을 담은 딕셔너리
     """
+    # RAG를 통해 고유명사 사전에서 관련 컨텍스트 추출
+    contexts = rag.get_context(tweet_text)
+    context_block = "\n".join(f"- {c}" for c in contexts)
+    enriched_system = SYSTEM_PROMPT.format(timestamp=tweet_timestamp) + "\n\n" + \
+        "### Reference dictionary:\n" + context_block + "\n\n"
+
+    # 메시지 조합
+    messages = [
+        {"role": "system", "content": enriched_system},
+        {"role": "user", "content": tweet_text.strip()}
+    ]
+
     try:
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(timestamp=tweet_timestamp)
-
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini-2024-07-18",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": tweet_text.strip()}
-            ],
-            temperature=0.3
-        )
-
-        result = response.choices[0].message.content.strip()
-        logger.info(f"🔍 GPT 응답: {result}")
+        result = await ollama.chat(messages, temperature=0.3)
+        logger.info(f"🔍 Ollama 응답: {result}")
 
         # 응답 포맷 확인 및 분리
         parts = [p.strip() for p in re.split(r"\s*/\s*", result)]
@@ -66,7 +75,6 @@ async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> Dic
             raise ValueError("응답 형식 오류: '번역문 / 분류 / 시작 일자 / 종료 일자'")
 
         translated, category, start_raw, end_raw = parts
-
         return {
             "translated": translated,
             "category": category,
@@ -74,8 +82,9 @@ async def translate_japanese_tweet(tweet_text: str, tweet_timestamp: str) -> Dic
             "end": None if end_raw.lower() == "none" else end_raw
         }
 
+
     except Exception as e:
-        logger.error(f"❗ GPT 번역 오류: {e}")
+        logger.error(f"❗ 변환 오류: {e}")
         return {
             "translated": None,
             "category": None,
