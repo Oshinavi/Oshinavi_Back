@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
+
 class UserOshi(Base):
     __tablename__ = "user_oshi"
 

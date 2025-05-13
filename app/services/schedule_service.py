@@ -9,6 +9,7 @@ from app.models.schedule import Schedule
 from app.services.twitter.user_service import TwitterUserService
 from app.utils.exceptions import BadRequestError, UnauthorizedError
 
+
 logger = logging.getLogger(__name__)
 
 class ScheduleService:
@@ -16,21 +17,23 @@ class ScheduleService:
         self.db = db
         self.twitter_svc = twitter_svc or TwitterUserService()
 
+    # 트위터 screen name으로 트위터 internal id 조회
     async def _resolve_internal_id(self, screen_name: str) -> str:
         logger.debug(f"Resolving internal ID for screen_name: {screen_name}")
         internal_id = await self.twitter_svc.get_user_id(screen_name)
         logger.debug(f"Resolved internal ID: {internal_id}")
         return internal_id
 
+    # 스케줄 생성
     async def create_schedule(
         self,
-        title: str,
-        category: str,
-        start_at: datetime,
-        end_at: datetime,
-        description: str,
-        related_twitter_screen_name: str,
-        created_by_user_id: int
+        title: str,                         # 스케줄 제목
+        category: str,                      # 스케줄 카테고리(일반, 방송, 라디오, 라이브, 음반, 굿즈, 영상, 게임)
+        start_at: datetime,                 # 스케줄 시작 시각
+        end_at: datetime,                   # 스케줄 종료 시각
+        description: str,                   # 스케줄 상세 정보
+        related_twitter_screen_name: str,   # 해당 스케줄과 관련된 오시 정보
+        created_by_user_id: int             # 해당 스케줄을 생성한 유저 id
     ) -> Schedule:
         logger.info(f"Creating schedule for user_id={created_by_user_id}, title={title}")
         if end_at < start_at:
@@ -54,6 +57,7 @@ class ScheduleService:
         logger.info(f"Created schedule ID={sched.id}")
         return sched
 
+    # 스케줄 변경
     async def edit_schedule(
         self,
         schedule_id: int,
@@ -92,6 +96,7 @@ class ScheduleService:
         logger.info(f"Updated schedule ID={schedule_id}")
         return sched
 
+    # 스케줄 삭제
     async def delete_schedule(self, schedule_id: int, user_id: int) -> None:
         logger.info(f"Deleting schedule ID={schedule_id} by user_id={user_id}")
         sched = await self.db.get(Schedule, schedule_id)
@@ -106,6 +111,7 @@ class ScheduleService:
         await self.db.commit()
         logger.info(f"Deleted schedule ID={schedule_id}")
 
+    # 현재 유저가 등록한 오시의 스케줄 리스트업
     async def list_my_oshi_schedules(self, user_id: int) -> List[Schedule]:
         from app.models.user_oshi import UserOshi
         logger.debug(f"Fetching oshi schedules for user_id={user_id}")

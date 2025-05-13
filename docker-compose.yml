@@ -1,0 +1,66 @@
+version: '3.8'
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: x_translator
+      MYSQL_USER: translator
+      MYSQL_PASSWORD: translator_pw
+      MYSQL_ROOT_PASSWORD: root_pw
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+#  ollama:
+#    image: ollama/ollama:latest
+#    container_name: ollama
+#    restart: always
+#    ports:
+#      - "11434:11434"
+#    volumes:
+#      - ~/.ollama/models:/root/.ollama/models:ro
+#    environment:
+#      - OLLAMA_HOST=0.0.0.0:11434
+#      - OLLAMA_CONTEXT_LENGTH=4096
+#      - OLLAMA_NUM_PARALLEL=2
+#      - OLLAMA_FLASH_ATTENTION=false
+#    entrypoint:
+#      - sh
+#      - -c
+#      - |
+#        # 1) Ollama 서버를 백그라운드로 띄웁니다.
+#        ollama serve &
+#        SERVER_PID=$!
+#        # 2) 서버가 완전히 기동될 때까지 잠시 대기
+#        sleep 5
+#        # 3) Modelfile 기반으로 모델 등록 시도 (실패해도 스크립트 중단 금지)
+#        ollama create /root/.ollama/models/llamax-finetune || true
+#        # 4) 백그라운드 서버를 포그라운드로 전환해 계속 실행
+#        wait $SERVER_PID
+
+  web:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: fastapi
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+asyncmy://translator:translator_pw@db:3306/x_translator
+#      - OLLAMA_API_URL=http://ollama:11434/v1
+    volumes:
+      - ./:/app
+    restart: on-failure
+    command: >
+     uvicorn app.main:app
+        --host 0.0.0.0
+        --port 8000
+        --log-level info
+
+volumes:
+  mysql_data:

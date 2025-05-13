@@ -1,4 +1,3 @@
-# app/schemas/auth.py
 from pydantic import BaseModel, EmailStr, Field
 from pydantic import ConfigDict
 
@@ -34,14 +33,18 @@ class TokenResponse(BaseModel):
         extra="ignore",
         json_schema_extra={
             "example": {
-                "message": "회원가입 및 로그인 성공",
-                "token":   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                "message": "로그인 성공",
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer"
             }
         },
     )
 
     message: str = Field(..., description="응답 메시지")
-    token:   str = Field(..., description="JWT 토큰")
+    access_token: str = Field(..., description="Access Token")
+    refresh_token: str = Field(..., description="Refresh Token")
+    token_type: str = Field(default="bearer", description="토큰 타입 (기본 bearer)")
 
 
 class MessageResponse(BaseModel):

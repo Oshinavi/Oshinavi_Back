@@ -11,8 +11,8 @@ from app.models.user import User
 from app.models.twitter_user import TwitterUser
 from app.repositories.user_repository import UserRepository
 from app.services.twitter.user_service import TwitterUserService
-from app.services.twitter.client import TwitterClientService
-from app.schemas.auth import SignupRequest
+from app.services.twitter.twitter_client_service import TwitterClientService
+from app.schemas.auth_schema import SignupRequest
 from app.utils.exceptions import (
     BadRequestError, ConflictError, NotFoundError, UnauthorizedError
 )
@@ -32,11 +32,12 @@ class AuthService:
         # TwitterUserService를 파라미터로 받거나 기본 생성
         self.twitter_svc = twitter_svc or TwitterUserService(TwitterClientService())
 
-    async def signup(self, data: SignupRequest) -> str:
+    # 회원가입
+    async def signup(self, data: SignupRequest) -> dict:
         if data.password != data.cfpassword:
             raise BadRequestError("입력한 비밀번호가 일치하지 않습니다.")
 
-        if await self.user_repo.find_by_email(data.email):  # EmailStr도 str의 서브클래스이므로 OK
+        if await self.user_repo.find_by_email(data.email):
             raise ConflictError("이미 존재하는 이메일입니다.")
 
         if not await self.twitter_svc.user_exists(data.tweet_id):
@@ -76,18 +77,32 @@ class AuthService:
         # signup 후 자동으로 토큰 발급
         return await self.login(data.email, data.password)
 
-    async def login(self, email: str, password: str) -> str:
+    # 로그인
+    async def login(self, email: str, password: str) -> dict:
         user = await self.user_repo.find_by_email(email)
         if not user or not pwd_context.verify(password, user.password):
             raise UnauthorizedError("이메일 또는 비밀번호가 올바르지 않습니다.")
 
         now = datetime.now(timezone.utc)
-        expire = now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRES_MINUTES)
+
+        access_exp = now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRES_MINUTES)
+        refresh_exp = now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRES_DAYS)
+
         jti = f"{user.id}-{int(now.timestamp())}"
 
-        payload = {"sub": email, "exp": expire, "jti": jti}
-        return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm="HS256")
+        access_payload = {"sub": email, "exp": access_exp, "jti": jti, "type": "access"}
+        refresh_payload = {"sub": email, "exp": refresh_exp, "jti": jti, "type": "refresh"}
 
+        access_token = jwt.encode(access_payload, settings.JWT_SECRET_KEY, algorithm="HS256")
+        refresh_token = jwt.encode(refresh_payload, settings.JWT_SECRET_KEY, algorithm="HS256")
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
+
+    # 로그아웃
     def logout(self, token: str) -> None:
         try:
             decoded = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
@@ -97,6 +112,7 @@ class AuthService:
         except JWTError:
             logger.warning("토큰 디코딩 실패 (로그아웃 중 무시됨)")
 
+    # 현재 로그인한 유저 정보 취득
     @staticmethod
     async def get_current_user(token: str, db: AsyncSession) -> User:
         try:

@@ -4,14 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import get_current_user
-from app.schemas.user import (
+from app.schemas.user_schema import (
     OshiResponse,
     OshiUpdateRequest,
     UserProfileResponse
 )
 from app.repositories.user_repository import UserRepository
 from app.services.twitter.user_service import TwitterUserService
-from app.services.twitter.client import TwitterClientService
+from app.services.twitter.twitter_client_service import TwitterClientService
 from app.core.database import get_db_session
 from app.models.user import User
 from app.models.twitter_user import TwitterUser

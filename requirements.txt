@@ -53,3 +53,9 @@ pytz~=2025.2
 
 greenlet>=2.0.0
 asyncmy>=0.2.10
+
+sentence-transformers>=2.2.2
+faiss-cpu~=1.11.0
+pydantic-settings~=2.9.1
+email-validator
+rank-bm25~=0.2.2
