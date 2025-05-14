@@ -4,20 +4,35 @@ from pathlib import Path
 from functools import lru_cache
 from typing import Optional
 
+# 프로젝트 기반 디렉토리 경로
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
+    """
+    애플리케이션 설정 모델
+    - .env 파일 및 환경 변수를 통해 설정값 로드
+    - 데이터베이스 URL 자동 구성 및 파일 경로 해석 기능 포함
+    """
+    # Pydantic 설정: .env 파일 경로 및 추가 필드 무시
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / "config" / "settings.env"),
         env_file_encoding="utf-8",
-        extra='ignore'
+        extra='ignore',
     )
 
     # ── Security & JWT ─────────────────────────────────────────
     SECRET_KEY: str
     JWT_SECRET_KEY: str
-    JWT_ACCESS_TOKEN_EXPIRES_MINUTES: int = Field(60, env="JWT_ACCESS_TOKEN_EXPIRES_MINUTES")
-    JWT_REFRESH_TOKEN_EXPIRES_DAYS:    int = Field(7,  env="JWT_REFRESH_TOKEN_EXPIRES_DAYS")
+    JWT_ACCESS_TOKEN_EXPIRES_MINUTES: int = Field(
+        60,
+        env="JWT_ACCESS_TOKEN_EXPIRES_MINUTES",
+        description="액세스 토큰 만료 시간(분)",
+    )
+    JWT_REFRESH_TOKEN_EXPIRES_DAYS: int = Field(
+        7,
+        env="JWT_REFRESH_TOKEN_EXPIRES_DAYS",
+        description="리프레시 토큰 만료 시간(일)",
+    )
 
     # ── Database ───────────────────────────────────────────────
     DB_USER:     str
@@ -26,10 +41,10 @@ class Settings(BaseSettings):
     DB_PORT:     int
     DB_NAME:     str
 
-    # .env 에 DATABASE_URL 이 있으면 그걸 쓰고, 없으면 아래 validator 가 합성합니다.
+    # .env 에 DATABASE_URL 이 있으면 그걸 쓰고, 없으면 아래 validator 가 합성
     DATABASE_URL: Optional[str] = Field(
         None,
-        description="SQLAlchemy 연결 URL (우선순위: env의 DATABASE_URL > DB_USER 등 자동 생성)"
+        description="전체 DB 연결 URL (우선순위: env > 자동 조합)",
     )
 
     # ── OpenAI ─────────────────────────────────────────────────
@@ -38,13 +53,19 @@ class Settings(BaseSettings):
     # ── RAG / FAISS ────────────────────────────────────────────
     FAISS_INDEX_PATH: str = Field(
         default=str(BASE_DIR / "rag_data" / "vector_store" / "faiss_index.bin"),
+        description="FAISS 벡터 인덱스 파일 경로",
     )
     FAISS_META_PATH: str  = Field(
         default=str(BASE_DIR / "rag_data" / "vector_store" / "metadata.json"),
+        description="FAISS 메타데이터 파일 경로",
     )
-    RAG_TOP_K: int        = Field(10)
+    RAG_TOP_K: int = Field(
+        10,
+        description="RAG 질의 시 상위 K개 문서 선택",
+    )
 
-    # (이전 버전에서 사용하던 필드; .env 에 남아있어도 무시)
+    # ── Legacy Settings ─────────────────────────────────────────
+    # 이전 버전 호환을 위한 필드
     ollama_api_url: Optional[str]
     ollama_model:   Optional[str]
 
@@ -76,6 +97,10 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
+    """
+    Settings 인스턴스를 싱글톤으로 반환
+    - 최초 호출시에만 Settings를 생성 및 캐싱
+    """
     return Settings()
 
 # 전역 설정 인스턴스

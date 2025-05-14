@@ -1,9 +1,16 @@
 from enum import Enum
 
 class PromptType(str, Enum):
+    """
+    프롬프트 타입을 정의하는 enum type
+    - TRANSLATE: 번역 및 분류용 프롬프트
+    - REPLY: 자동 리플라이 생성용 프롬프트
+    """
     TRANSLATE = "translate"
     REPLY     = "reply"
 
+# ─── 시스템 프롬프트 매핑 ────────────────────────────────────────────
+# 각 PromptType에 대응하는 시스템 레벨 지침을 저장
 SYSTEM_PROMPTS: dict[PromptType, str] = {
     PromptType.TRANSLATE: """
 You are an AI that processes Japanese tweets along with their timestamps.

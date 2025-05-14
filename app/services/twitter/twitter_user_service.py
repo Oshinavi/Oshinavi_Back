@@ -1,4 +1,5 @@
 import logging
+
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.utils.exceptions import NotFoundError
 
@@ -6,32 +7,40 @@ logger = logging.getLogger(__name__)
 
 class TwitterUserService:
     """
-    트위터 유저 정보 조회 서비스.
+    트위터 유저 정보 조회 서비스 클래스
+    트위터 사용자의 기본 정보를 API를 통해 취득
     """
-    def __init__(self, client_service: TwitterClientService | None = None):
-        # client_service를 주입받지 않으면 내부에서 기본 생성
-        self.client_service = client_service or TwitterClientService()
+    def __init__(
+        self,
+        client_service: TwitterClientService  # 이제 내부 ID가 아니라 client_service만 받습니다
+    ):
+        """
+        - client_service: TwitterClientService 인스턴스를 주입받기
+        """
+        self.client_service = client_service
 
     # 문자열 UTF-8 인코딩 복구
     @staticmethod
-    def _fix_encoding(s: str | None) -> str | None:
+    def _fix_encoding(text: str | None) -> str | None:
         """
         잘못 Latin-1 로 디코딩된 UTF-8 문자열을 복구
-        정상 문자열은 그대로 반환.
+        정상 문자열은 그대로 반환
         """
-        if s is None:
+        if text is None:
             return None
-        print("[_fix_encoding] BEFORE:", repr(s))
+
+        logger.debug(f"[_fix_encoding] BEFORE: {repr(text)}")
         try:
-            fixed = s.encode("latin1").decode("utf-8")
-            print("[_fix_encoding] AFTER :", repr(fixed))
+            fixed = text.encode("latin1").decode("utf-8")
+            logger.debug(f"[_fix_encoding] AFTER : {repr(fixed)}")
             return fixed
         except UnicodeEncodeError:
-            # encode 실패 ⇒ 이미 정상 UTF-8
-            return s
+            return text
 
-    # 유저 정보 취득
     async def get_user_info(self, screen_name: str) -> dict:
+        """
+        지정된 screen_name의 사용자 정보를 조회
+        """
         await self.client_service.ensure_login()
         client = self.client_service.get_client()
         user = await client.get_user_by_screen_name(screen_name)
@@ -47,20 +56,18 @@ class TwitterUserService:
             "profile_banner_url": user.profile_banner_url,
         }
 
-    # 유저 id 취득
     async def get_user_id(self, screen_name: str) -> str:
         info = await self.get_user_info(screen_name)
         user_id = str(info["id"])
-        logger.debug(f"[TwitterUserService] {screen_name} → id: {info['id']}")
+        logger.debug(f"[TwitterUserService] {screen_name} → id: {user_id}")
         return user_id
 
-    # 유저 존재여부 확인
     async def user_exists(self, screen_name: str) -> bool:
         try:
             await self.client_service.ensure_login()
             client = self.client_service.get_client()
-            u = await client.get_user_by_screen_name(screen_name)
-            return u is not None and hasattr(u, "id")
+            user = await client.get_user_by_screen_name(screen_name)
+            return user is not None and hasattr(user, "id")
         except Exception as e:
             logger.error(f"Twitter 존재 확인 실패: {e}")
             return False

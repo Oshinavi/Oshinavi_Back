@@ -1,4 +1,3 @@
-from app.core.config import settings
 import httpx
 from typing import List, Dict
 

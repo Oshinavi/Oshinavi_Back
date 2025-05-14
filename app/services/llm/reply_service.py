@@ -8,65 +8,58 @@ from app.schemas.llm_schema import ReplyResult
 logger = logging.getLogger(__name__)
 
 class ReplyService:
+    """
+   자동 리플라이 생성 서비스 클래스
+   - OpenAI API를 사용하여 주어진 트윗 텍스트에 대해
+     팬으로서 자연스러운 일본어 응답을 생성
+   """
     def __init__(
         self,
         openai_client: AsyncOpenAI,
-        model: str = "gpt-4o-mini-2024-07-18"
+        model_name: str = "gpt-4o-mini-2024-07-18"
     ):
+        """
+        Args:
+          openai_client: OpenAI 비동기 클라이언트 인스턴스
+          model_name:    사용할 OpenAI 모델 이름
+        """
         self.openai = openai_client
-        self.model  = model
+        self.model  = model_name
 
     async def generate_reply(self, tweet_text: str) -> ReplyResult:
-        system = SYSTEM_PROMPTS[PromptType.REPLY]
+        """
+        주어진 트윗 텍스트(tweet_text)에 대해 팬 페르소나의
+        자연스러운 일본어 리플라이를 생성하여 반환
+
+        과정:
+          1) 시스템 프롬프트 설정 (팬 페르소나 부여)
+          2) OpenAI ChatCompletion 호출
+          3) 응답 메시지 추출 및 ReplyResult로 포장
+
+        Args:
+          tweet_text: 원본 트윗 텍스트
+
+        Returns:
+          ReplyResult: 생성된 리플라이 텍스트를 포함
+
+        Raises:
+          Exception: OpenAI 호출 실패 시 예외 재발생
+                """
+        system_prompt = SYSTEM_PROMPTS[PromptType.REPLY]
         try:
-            resp = await self.openai.chat.completions.create(
+            response = await self.openai.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": tweet_text.strip()},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": tweet_text.strip()},
                 ],
-                temperature=0.5
+                temperature=0.5,
             )
-            return ReplyResult(reply_text=resp.choices[0].message.content.strip())
-        except Exception as e:
-            logger.error("LLM reply error", exc_info=e)
+            reply_text = response.choices[0].message.content.strip()
+            return ReplyResult(reply_text=reply_text)
+        except Exception as error:
+            logger.error(
+                "[ReplyService] 자동 리플라이 생성 오류: %s", error,
+                exc_info=True
+            )
             raise
-
-
-# import os
-# from dotenv import load_dotenv
-# from app.utils.ollama_client import OllamaClient
-#
-# SYSTEM_PROMPT = """
-# あなたは、アイドルのファンとして、X（旧Twitter）でリプライを送るAIです。
-# 相手は日本の女性アイドルで、日常の投稿やお知らせ（放送・ライブ・グッズなど）をXに投稿しています。
-#
-# あなたの役割は、ファンとして自然で丁寧な日本語でリプライを送ることです。
-#
-# 次のルールに従ってください：
-# - 投稿内容が日常的な挨拶（例：おはよう、こんにちは）なら、同じような挨拶＋応援の気持ちを込めた一言を返してください。
-# - 投稿が活動に関するお知らせ（例：放送、ライブ、グッズ発売）なら、「楽しみにしています」「応援しています」「遠くからでも見守ってます」などの応援メッセージを添えてください。
-# - ファンとしての立場を守り、アイドルに失礼のないように丁寧な言葉を使ってください。
-# - 絵文字はあっても1〜2個まで。無理に使う必要はありません。
-# - 必ず日本語で返答してください。
-# - 生成される返信の文字数は最大560バイトまでにしてください。
-# """
-#
-# BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# ENV_PATH = os.path.join(BASE_DIR, "config", "settings.env")
-# load_dotenv(dotenv_path=ENV_PATH)
-# OLLAMA_API_URL = os.getenv("OLLAMA_API_URL")
-# OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL")
-#
-# ollama = OllamaClient(OLLAMA_API_URL, OLLAMA_MODEL)
-#
-#
-# async def generate_reply(tweet_text: str) -> str:
-#     messages = [
-#         {"role": "system",  "content": SYSTEM_PROMPT},
-#         {"role": "user",    "content": tweet_text.strip()}
-#     ]
-#     try:
-#         return await ollama.chat(messages, temperature=0.5)
-#     except Exception:
-#         return "リプライ生成に失敗しました。"

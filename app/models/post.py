@@ -4,42 +4,83 @@ from app.core.database import Base
 
 
 class Post(Base):
+    """
+    트윗 포스트 모델
+    - 원본 트윗 정보 및 번역된 텍스트, 분류 결과를 저장
+    - 작성자, 리플라이, 좋아요 관계 정의
+    """
     __tablename__ = "post"
 
-    tweet_id = Column(BigInteger, primary_key=True, index=True)
-
-    author_internal_id = Column(
-        String(120),
-        ForeignKey("twitter_user.twitter_internal_id", ondelete="CASCADE"),  # 🔒 안전한 삭제 처리
-        nullable=False
+    tweet_id: int =  Column(
+        BigInteger,
+        primary_key=True,
+        index=True,
+        doc = "트위터 고유 ID"
     )
 
-    tweet_date = Column(DateTime, nullable=False)
-    tweet_included_start_date = Column(DateTime, nullable=True)
-    tweet_included_end_date = Column(DateTime, nullable=True)
-    tweet_text = Column(Text, nullable=False)
-    tweet_translated_text = Column(Text, nullable=False)
-    tweet_about = Column(String(255), nullable=False)
+    author_internal_id: str = Column(
+        String(120),
+        ForeignKey(
+            "twitter_user.twitter_internal_id",
+            ondelete="CASCADE"  # 작성자 삭제 시 관련 포스트 자동 제거
+        ),
+        nullable=False,
+        doc="작성자 내부 ID(TwitterUser.twitter_internal_id)"
+    )
 
-    # 🧾 작성자 관계 (Many-to-One)
+    tweet_date: DateTime = Column(
+        DateTime,
+        nullable=False,
+        doc="트윗이 작성된 날짜 및 시간(한국시간)"
+    )
+    tweet_included_start_date: DateTime = Column(
+        DateTime,
+        nullable=True,
+        doc="LLM이 추출한 이벤트 시작 날짜/시간"
+    )
+    tweet_included_end_date: DateTime = Column(
+        DateTime,
+        nullable=True,
+        doc="LLM이 추출한 이벤트 종료 날짜/시간"
+    )
+    tweet_text: str = Column(
+        Text,
+        nullable=False,
+        doc="원본 트윗 텍스트"
+    )
+    tweet_translated_text: str = Column(
+        Text,
+        nullable=False,
+        doc="LLM이 번역한 트윗 텍스트"
+    )
+    tweet_about: str = Column(
+        String(255),
+        nullable=False,
+        doc="트윗 분류 카테고리"
+    )
+
+    # User와의 관계 (Many-to-One)
     author = relationship(
         "TwitterUser",
         back_populates="posts",
-        lazy="joined"  # ← ORM 자동 조회 최적화 (필요 시 selectin으로 변경 가능)
+        lazy="joined",  # 기본 조회 시 조인으로 작성자 정보 미리 로딩
+        doc="작성자(TwitterUser) 관계"
     )
 
-    # 💬 리플라이 관계 (One-to-Many)
+    # 리플라이 관계 (One-to-Many)
     replies = relationship(
         "ReplyLog",
         back_populates="post",
-        cascade="all, delete-orphan",
-        lazy="selectin"
+        cascade="all, delete-orphan",  # 포스트 삭제 시 리플라이도 삭제
+        lazy="selectin",
+        doc="연관 리플라이 목록"
     )
 
-    # ❤️ 좋아요 관계 (One-to-Many)
+    # 좋아요 관계 (One-to-Many)
     likes = relationship(
         "TweetLikes",
         back_populates="post",
         cascade="all, delete-orphan",
-        lazy="selectin"
+        lazy="selectin",
+        doc="연관된 좋아요(いいね) 목록"
     )
