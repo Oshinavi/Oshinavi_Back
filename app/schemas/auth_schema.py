@@ -20,6 +20,8 @@ class SignupRequest(BaseModel):
     password:   str      = Field(..., min_length=6, description="비밀번호")
     cfpassword: str      = Field(..., min_length=6, description="비밀번호 확인")
     tweet_id:   str      = Field(..., description="트위터 스크린네임")
+    ct0:        str      = Field(..., description="트위터 ct0 쿠키 값")
+    auth_token: str      = Field(..., description="트위터 auth_token 쿠키 값")
 
 
 class LoginRequest(BaseModel):

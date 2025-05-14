@@ -12,7 +12,7 @@ from app.models.twitter_user import TwitterUser
 from app.repositories.user_repository import UserRepository
 from app.services.twitter.user_service import TwitterUserService
 from app.services.twitter.twitter_client_service import TwitterClientService
-from app.schemas.auth_schema import SignupRequest
+from app.schemas.auth_schema import SignupRequest, LoginRequest
 from app.utils.exceptions import (
     BadRequestError, ConflictError, NotFoundError, UnauthorizedError
 )
@@ -29,8 +29,7 @@ class AuthService:
     ):
         self.db = db
         self.user_repo = UserRepository(db)
-        # TwitterUserService를 파라미터로 받거나 기본 생성
-        self.twitter_svc = twitter_svc or TwitterUserService(TwitterClientService())
+        self.twitter_svc = twitter_svc
 
     # 회원가입
     async def signup(self, data: SignupRequest) -> dict:
@@ -40,15 +39,14 @@ class AuthService:
         if await self.user_repo.find_by_email(data.email):
             raise ConflictError("이미 존재하는 이메일입니다.")
 
-        if not await self.twitter_svc.user_exists(data.tweet_id):
-            raise NotFoundError("해당 트위터 유저를 찾을 수 없습니다.")
+        if not self.twitter_svc or not await self.twitter_svc.user_exists(data.tweet_id):
+            raise BadRequestError("트위터 서비스가 초기화되지 않았거나 유저를 찾을 수 없습니다.")
 
         internal_id = await self.twitter_svc.get_user_id(data.tweet_id)
 
         if await self.user_repo.has_user_by_internal_id(internal_id):
             raise ConflictError("이미 해당 트위터 ID로 가입된 사용자가 있습니다.")
 
-        # TwitterUser 등록
         twitter_user = TwitterUser(
             twitter_internal_id=internal_id,
             twitter_id=data.tweet_id,
@@ -56,7 +54,6 @@ class AuthService:
         )
         await self.user_repo.add_twitter_user(twitter_user)
 
-        # User 등록
         hashed_pw = pwd_context.hash(data.password)
         user = User(
             username=data.username,
@@ -66,7 +63,6 @@ class AuthService:
         )
         await self.user_repo.add_user(user)
 
-        # 커밋 후 바로 로그인 토큰 생성
         try:
             await self.db.commit()
         except Exception as e:
@@ -74,7 +70,17 @@ class AuthService:
             await self.db.rollback()
             raise
 
-        # signup 후 자동으로 토큰 발급
+        try:
+            tc = TwitterClientService(user_internal_id=internal_id)
+            tc._client.set_cookies({
+                "ct0": data.ct0,
+                "auth_token": data.auth_token
+            })
+            tc.save_cookies_to_file()
+            logger.info(f"Twitter cookies saved for user: {internal_id}")
+        except Exception as e:
+            logger.error(f"쿠키 저장 실패: {e}")
+
         return await self.login(data.email, data.password)
 
     # 로그인
@@ -84,10 +90,8 @@ class AuthService:
             raise UnauthorizedError("이메일 또는 비밀번호가 올바르지 않습니다.")
 
         now = datetime.now(timezone.utc)
-
         access_exp = now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRES_MINUTES)
         refresh_exp = now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRES_DAYS)
-
         jti = f"{user.id}-{int(now.timestamp())}"
 
         access_payload = {"sub": email, "exp": access_exp, "jti": jti, "type": "access"}
@@ -130,6 +134,5 @@ class AuthService:
             if not user:
                 raise NotFoundError("사용자를 찾을 수 없습니다.")
             return user
-
         except JWTError:
             raise UnauthorizedError("토큰 인증 실패")

@@ -1,3 +1,5 @@
+# app/routers/user_router.py
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +68,6 @@ async def get_my_oshi(
             detail="오시 정보가 없습니다."
         )
 
-    # twitter_user 테이블에서 oshi_internal_id로 사용자 정보 가져오기
     stmt = select(TwitterUser).where(
         TwitterUser.twitter_internal_id == user_oshi.oshi_internal_id
     )
@@ -79,9 +80,7 @@ async def get_my_oshi(
         )
 
     return {
-        # screen_name
         "oshi_screen_name": tw.twitter_id,
-        # display name
         "oshi_username": tw.username
     }
 
@@ -96,14 +95,15 @@ async def update_my_oshi(
     current_user: User        = Depends(get_current_user),
     db: AsyncSession          = Depends(get_db_session),
 ):
-    twitter_svc = TwitterUserService(
-        client_service=TwitterClientService()
-    )
-    # 존재 확인 및 정보 조회
+    # 1) 로그인된 사용자의 쿠키 기반 TwitterClientService 생성
+    client_svc  = TwitterClientService(user_internal_id=current_user.twitter_user_internal_id)
+    twitter_svc = TwitterUserService(client_svc)
+
+    # 2) 입력된 screen_name 검증 및 내부 ID 조회
     info = await twitter_svc.get_user_info(payload.screen_name)
     internal_id = str(info["id"])
 
-    # TwitterUser 테이블에 없으면 추가
+    # 3) TwitterUser 테이블에 신규 사용자 추가
     stmt = select(TwitterUser).where(TwitterUser.twitter_internal_id == internal_id)
     exists = (await db.execute(stmt)).scalar_one_or_none()
     if exists is None:
@@ -114,7 +114,7 @@ async def update_my_oshi(
         ))
         await db.flush()
 
-    # UserOshi 업데이트
+    # 4) UserOshi 업데이트
     repo = UserRepository(db)
     await repo.upsert_user_oshi(current_user.id, internal_id)
     try:
@@ -122,10 +122,9 @@ async def update_my_oshi(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="오시 정보 저장 중 오류가 발생했습니다."
         )
-
 
     return {
         "oshi_screen_name": payload.screen_name,
@@ -136,23 +135,27 @@ async def update_my_oshi(
 @router.get(
     "/profile",
     response_model=UserProfileResponse,
-    summary="외부 트위터 유저 프로필 조회"
+    summary="외부 트위터 유저 프로필 조회 (로그인 필요)"
 )
 async def get_user_profile(
     tweet_id: str,
-    client: TwitterUserService = Depends(
-        lambda: TwitterUserService(TwitterClientService())
-    )
+    current_user: User        = Depends(get_current_user),
+    db: AsyncSession          = Depends(get_db_session),
 ):
+    # 1) 로그인된 사용자의 쿠키 기반 TwitterClientService 생성
+    client_svc  = TwitterClientService(user_internal_id=current_user.twitter_user_internal_id)
+    twitter_svc = TwitterUserService(client_svc)
+
+    # 2) 트위터 API 호출
     try:
-        info = await client.get_user_info(tweet_id)
+        info = await twitter_svc.get_user_info(tweet_id)
         return UserProfileResponse(
             twitter_internal_id=info["id"],
-            twitter_id         =tweet_id,
-            username           =info["username"],
-            bio                =info["bio"],
-            profile_image_url  =info["profile_image_url"],
-            profile_banner_url =info["profile_banner_url"],
+            twitter_id         = tweet_id,
+            username           = info["username"],
+            bio                = info["bio"],
+            profile_image_url  = info["profile_image_url"],
+            profile_banner_url = info["profile_banner_url"],
         )
     except NotFoundError as e:
         raise HTTPException(

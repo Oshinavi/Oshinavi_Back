@@ -11,9 +11,14 @@ class RAGService:
         self,
         index_path: str,
         meta_path: str,
-        top_k: int = 5,
-        lexical_weight: float = 0.3,
+        top_k: int = 10,
+        lexical_weight: float = 0.5,   # 단어 매칭 기반 검색 결과의 기여도 조정 하이퍼파라미터
     ):
+        '''
+        lexical_weight가 크면 BM25 기반 매칭을 더 강조하고, 작으면 embedding 유사도를 우선시함
+        - 0.0에 가깝게 설정하면 semantic 검색 결과만 사용
+        - 1.0 또는 그 이상으로 설정하면 BM25 기반 검색 결과의 영향력이 증가
+        '''
         # 1) FAISS 인덱스 (semantic)
         self.index = faiss.read_index(index_path)
 
