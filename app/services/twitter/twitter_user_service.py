@@ -12,7 +12,7 @@ class TwitterUserService:
     """
     def __init__(
         self,
-        client_service: TwitterClientService  # 이제 내부 ID가 아니라 client_service만 받습니다
+        client_service: TwitterClientService
     ):
         """
         - client_service: TwitterClientService 인스턴스를 주입받기
