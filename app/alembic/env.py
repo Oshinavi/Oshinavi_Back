@@ -11,7 +11,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 # ─── .env 로드 ─────────────────────────────────────────
 #    프로젝트 루트에 .env 파일이 있어야 합니다.
-dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'app', 'config', 'settings.env'))
+dotenv_path = os.path.join(
+    os.path.dirname(__file__), "..", "config", "settings.env"
+)
 load_dotenv(dotenv_path, override=True)
 
 # ─── Alembic Config 객체 ───────────────────────────────
