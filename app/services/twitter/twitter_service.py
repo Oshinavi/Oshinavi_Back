@@ -113,17 +113,17 @@ class TwitterService:
         posts = await self.repo.list_posts_by_username(screen_name)
         return [
             {
-                "tweet_userid": p.author_internal_id,  # 추가
+                "tweet_userid": p.author.twitter_id,
                 "tweet_id": p.tweet_id,
                 "tweet_username": p.author.username,
                 "tweet_date": p.tweet_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "tweet_text": p.tweet_text,
-                "tweet_translated_text": p.tweet_translated_text,  # 추가
-                "tweet_about": p.tweet_about,  # 추가
+                "tweet_translated_text": p.tweet_translated_text,
+                "tweet_about": p.tweet_about,
                 "tweet_included_start_date": (
                     p.tweet_included_start_date.strftime("%Y-%m-%d %H:%M:%S")
                     if p.tweet_included_start_date else None
-                ),  # 추가
+                ),
                 "tweet_included_end_date": (
                     p.tweet_included_end_date.strftime("%Y-%m-%d %H:%M:%S")
                     if p.tweet_included_end_date else None
