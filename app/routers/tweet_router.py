@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.llm_schema import ReplyResult
-from app.schemas.tweet_schema import AutoReplyRequest, SendReplyRequest
+from app.schemas.tweet_schema import AutoReplyRequest, SendReplyRequest, TweetResponse
 from app.core.database import get_db_session
 from app.dependencies import get_llm_service, get_current_user
 from app.services.twitter.twitter_service import TwitterService
@@ -16,7 +16,7 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tweets", tags=["Tweet"])
 
-@router.get("/{screen_name}", status_code=status.HTTP_200_OK, response_model=None)
+@router.get("/{screen_name}", status_code=status.HTTP_200_OK, response_model=List[TweetResponse])
 async def fetch_user_tweets(
     screen_name: str,
     db: AsyncSession = Depends(get_db_session),

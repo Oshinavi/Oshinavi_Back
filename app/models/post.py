@@ -58,6 +58,11 @@ class Post(Base):
         nullable=False,
         doc="트윗 분류 카테고리"
     )
+    image_urls: str = Column(
+        Text,
+        nullable=True,
+        doc="트윗에 포함된 이미지 URL 리스트 (JSON)"
+    )
 
     # User와의 관계 (Many-to-One)
     author = relationship(

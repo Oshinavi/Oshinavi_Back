@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional
+import json
 
 
 # ─── 트윗 관련 요청 스키마 정의 ─────────────────────────────────────────
@@ -16,6 +17,21 @@ class TweetResponse(BaseModel):
     tweet_about: str
     image_urls: List[str]
     profile_image_url: Optional[str]
+
+    @validator('image_urls', pre=True)
+    def parse_image_urls(cls, v):
+        # v가 이미 List[str]인 경우(pass)
+        if isinstance(v, list):
+            return v
+        # v가 None 또는 빈 문자열이면 빈 리스트로
+        if not v:
+            return []
+        # JSON 문자열 → Python 리스트
+        try:
+            return json.loads(v)
+        except json.JSONDecodeError:
+            # 파싱 실패 시 빈 리스트 또는 원본 문자열 리스트로
+            return []
 
 class AutoReplyRequest(BaseModel):
     """
