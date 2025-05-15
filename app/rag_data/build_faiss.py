@@ -49,7 +49,7 @@ def build_faiss_index() -> None:
     faiss_index = faiss.IndexFlatIP(EMBEDDING_DIMENSION)
     num_embeddings = embeddings.shape[0]
     embeddings = embeddings.astype(np.float32)
-    faiss_index.add(n=num_embeddings, x=embeddings)
+    faiss_index.add(embeddings)
     faiss.write_index(faiss_index, str(INDEX_FILE_PATH))
 
     # ── 메타데이터 생성 및 저장 ────────────────────────────────────

@@ -53,6 +53,7 @@ class TranslateService:
 
         # 1) RAG로부터 고유명사 컨텍스트 가져오기
         context_items = self.rag.get_context(tweet_text)
+        logger.info("[TranslateService] 최종 RAG 컨텍스트: %s", context_items)
         reference_block = "\n".join(f"- {item}" for item in context_items)
 
         # 2) 시스템 프롬프트 구성

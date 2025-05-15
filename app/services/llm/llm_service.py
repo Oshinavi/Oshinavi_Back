@@ -122,7 +122,7 @@ class LLMService:
         masked_text, ht_map = self._mask_hashtags(tweet_text)
         # 2) RAG 컨텍스트 로드
         contexts = self.rag.get_context(masked_text)
-        logger.debug("[LLMService] RAG contexts=%s", contexts)
+        logger.info("[LLMService] 최종 RAG 컨텍스트: %s", contexts)
         # 3) 시스템 프롬프트 준비
         system_prompt = SYSTEM_PROMPTS[PromptType.TRANSLATE].format(
             timestamp=tweet_timestamp
