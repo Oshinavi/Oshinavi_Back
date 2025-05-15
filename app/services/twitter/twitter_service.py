@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Union, Optional
@@ -8,7 +9,7 @@ from app.models.reply_log import ReplyLog
 from app.models.post import Post
 from app.repositories.tweet_repository import TweetRepository
 from app.services.twitter.twitter_client_service import TwitterClientService
-from app.services.twitter.twitter_user_service import TwitterUserService  # <-- single-arg init
+from app.services.twitter.twitter_user_service import TwitterUserService
 from app.services.llm.llm_service import LLMService
 from app.schemas.llm_schema import TranslationResult
 from app.utils.exceptions import NotFoundError
@@ -72,6 +73,14 @@ class TwitterService:
             if tid in existing:
                 # 중복 트윗은 스킵
                 continue
+            # 이미지 URL 추출 (media 속성이 있다면)
+            media_urls = []
+            if getattr(t, "media", None):
+                for m in t.media:  # Twikit Tweet.media 리스트
+                    if getattr(m, "url", None):
+                        media_urls.append(m.url)
+                    elif getattr(m, "media_url_https", None):
+                        media_urls.append(m.media_url_https)
 
             logger.info("[TwitterService] ▶ 원본 트윗 (%s):\n%s", tid, t.full_text)
 
@@ -115,6 +124,7 @@ class TwitterService:
                 tweet_text                = t.full_text,
                 tweet_translated_text     = tr.translated,
                 tweet_about               = tr.category,
+                image_urls                = json.dumps(media_urls) if media_urls else None,  # JSON 직렬화
             )
             # DB 세션에 추가
             self.repo.add_post(post)
@@ -147,6 +157,7 @@ class TwitterService:
                 "tweet_text": p.tweet_text,
                 "tweet_translated_text": p.tweet_translated_text,
                 "tweet_about": p.tweet_about,
+                "image_urls": json.loads(p.image_urls) if p.image_urls else [],
                 "profile_image_url": profile_image_url,
             }
             for p in posts

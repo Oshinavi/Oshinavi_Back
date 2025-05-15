@@ -83,10 +83,7 @@ async def login(
     로그인 처리 및 토큰을 쿠키에 저장
     """
     try:
-        tokens = await AuthService(db, settings.USER_INTERNAL_ID).login(
-            req.email,
-            req.password
-        )
+        tokens = await AuthService(db).login(req.email, req.password)
     except UnauthorizedError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

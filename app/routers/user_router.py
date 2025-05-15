@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db_session
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.models.twitter_user import TwitterUser
 from app.repositories.user_repository import UserRepository
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.services.twitter.twitter_user_service import TwitterUserService
+from app.schemas.user_schema import UserProfileResponse
 from app.schemas.user_schema import (
     OshiResponse,
     OshiUpdateRequest,
@@ -153,35 +154,44 @@ async def update_my_oshi(
 @router.get(
     "/profile",
     response_model=UserProfileResponse,
-    summary="외부 트위터 유저 프로필 조회 (로그인 필요)"
+    summary="외부 트위터 유저 프로필 조회 (로그인 선택)"
 )
 async def get_user_profile(
     tweet_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> UserProfileResponse:
     """
     주어진 트위터 id로 외부 사용자 프로필 조회
     """
-
-    # 1) 로그인된 유저의 쿠키 기반 TwitterClientService 생성
-    client_svc = TwitterClientService(
-        user_internal_id=current_user.twitter_user_internal_id
-    )
+    # 1) 쿠키 로그인 시도, 실패하면 무시
+    user_internal = (current_user.twitter_user_internal_id
+                     if current_user and current_user.twitter_user_internal_id
+                     else "public")
+    client_svc = TwitterClientService(user_internal_id=user_internal)
     twitter_svc = TwitterUserService(client_svc)
 
-    # 2) 트위터 API 호출
+    try:
+        await client_svc.ensure_login()
+    except FileNotFoundError:
+        pass
+
     try:
         info = await twitter_svc.get_user_info(tweet_id)
-        return UserProfileResponse(
-            twitter_internal_id=info["id"],
-            twitter_id=tweet_id,
-            username=info["username"],
-            bio=info.get("bio"),
-            profile_image_url=info.get("profile_image_url"),
-            profile_banner_url=info.get("profile_banner_url"),
-        )
     except NotFoundError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception:
+        logger.error("외부 트위터 조회 실패", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="외부 트위터 API 조회 실패"
         )
+
+    # 2) 트위터 API 호출
+    return UserProfileResponse(
+        twitter_internal_id=str(info["id"]),
+        twitter_id=tweet_id,
+        username=info["username"],
+        bio=info.get("bio") or "",
+        profile_image_url=info.get("profile_image_url"),
+        profile_banner_url=info.get("profile_banner_url"),
+    )

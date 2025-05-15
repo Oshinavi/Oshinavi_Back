@@ -45,6 +45,7 @@ class TwitterClientService:
         내부 쿠키 파일을 로드하여 Twikit 로그인 처리
         """
         # 쿠키 파일 존재 여부 확인
+        logger.info(f"✅ 쿠키 로드 시도: {self.cookie_path!r}, exists={self.cookie_path.exists()}")
         if self.cookie_path.exists():
             # 파일에서 JSON 형태의 쿠키 로드
             with open(self.cookie_path, "r", encoding="utf-8") as f:
