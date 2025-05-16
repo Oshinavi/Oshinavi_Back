@@ -1,5 +1,3 @@
-# app/services/twitter/twitter_service.py
-
 import json
 import logging
 from datetime import datetime, timedelta
@@ -36,7 +34,7 @@ class TwitterService:
 
     async def _extract_image_urls(self, media_entries: list) -> List[str]:
         """
-        twikit media 객체 대신, t.co 링크를 TcoResolver 로 처리
+        twikit media 객체 대신 t.co 링크를 TcoResolver 로 처리
         """
         raw_urls = []
         for m in media_entries or []:

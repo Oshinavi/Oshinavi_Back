@@ -1,6 +1,3 @@
-# app/utils/selenium_image_fetcher.py
-
-import time
 import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -12,8 +9,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_tweet_image_urls_via_selenium(short_url: str) -> list[str]:
     """
-    t.co 단축 URL을 열어서 tweetPhoto 이미지를 모두 긁어옵니다.
-    최소한의 headless 설정만 적용해서, 예전처럼 잘 동작하도록 했습니다.
+    t.co 단축 URL을 열어서 tweetPhoto 이미지를 모두 크롤링
     """
     opts = Options()
     opts.add_argument("--headless=new")             # Chrome 109+ 권장 headless 모드
