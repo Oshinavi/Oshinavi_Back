@@ -22,6 +22,7 @@ from app.utils.exceptions import (
     NotFoundError, UnauthorizedError
 )
 
+# logging.basicConfig(level=logging.DEBUG)
 
 # ─── 애플리케이션 수명 주기 이벤트 핸들러 정의 ─────────────────────────────
 @asynccontextmanager

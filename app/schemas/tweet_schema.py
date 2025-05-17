@@ -33,6 +33,19 @@ class TweetResponse(BaseModel):
             # 파싱 실패 시 빈 리스트 또는 원본 문자열 리스트로
             return []
 
+class TweetPageResponse(BaseModel):
+    """
+    페이지네이션된 트윗 응답 모델
+    - tweets: 신규 트윗 리스트
+    - next_cursor: 다음 페이지 호출용 cursor 토큰
+    """
+    tweets: List[TweetResponse]
+    next_remote_cursor: Optional[str]
+    next_db_cursor: Optional[str]
+
+
+# ─── 트윗 관련 요청 스키마 정의 ─────────────────────────────────────────
+
 class AutoReplyRequest(BaseModel):
     """
     자동 리플라이 생성 요청 모델

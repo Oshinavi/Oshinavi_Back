@@ -13,9 +13,13 @@ class LLMService:
     """
     LLM 기반 텍스트 처리 서비스
     - 트윗 텍스트 번역(Translation) 및 자동 리플라이(Reply) 기능 제공
-    - 해시태그 마스킹, RAG 컨텍스트 적용, OpenAI 호출, 결과 파싱 로직 포함
+    - RT 프리픽스 및 특정 이모지 마스킹/복원, RAG 컨텍스트 적용, OpenAI 호출, 결과 파싱 로직 포함
     """
-    _HT_PATTERN = re.compile(r"#\S+")  # 해시태그 인식 패턴
+    _RT_PATTERN    = re.compile(r"^RT @\S+:" )   # 리트윗 프리픽스 인식
+    _HASH_EMOJI    = '#\u20E3'                   # 마스킹할 특수 이모지 (#⃣)
+    _EMOJI_PATTERN = re.compile(
+        r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF\u2600-\u26FF\u2700-\u27BF]"
+    )  # 이모지 보존 패턴
 
     def __init__(
             self,
@@ -30,149 +34,115 @@ class LLMService:
         self.openai = openai_client
         self.rag    = rag_service
 
-    # ─── 해시태그 마스킹 및 복원 ─────────────────────────────────
+    # ─── RT 프리픽스 마스킹 및 복원 ─────────────────────────────────
 
-    def _extract_hashtags(self, text: str) -> list[str]:
-        """
-        텍스트 내에서 해시태그(#...)를 추출하고 순서대로 중복 제거하여 반환
-        """
-        tags = self._HT_PATTERN.findall(text)
-        seen = set()
-        unique_tags = []
-        for tag in tags:
-            if tag not in seen:
-                seen.add(tag)
-                unique_tags.append(tag)
-        return unique_tags
+    def _extract_rt_prefix(self, text: str) -> str | None:
+        m = self._RT_PATTERN.match(text)
+        return m.group(0) if m else None
 
-    def _mask_hashtags(self, text: str) -> Tuple[str, dict[str,str]]:
-        """
-        해시태그를 임시 플레이스홀더로 치환하여 번역 시 보존
-        Returns:
-          masked_text: 플레이스홀더로 대체된 텍스트
-          mapping:     플레이스홀더→원본 해시태그 매핑 사전
-        """
-        tags = self._extract_hashtags(text)
-        mapping: Dict[str, str] = {}
-        masked_text = text
-        for idx, tag in enumerate(tags, start=1):
-            placeholder = f"__HT_{idx}__"
-            mapping[placeholder] = tag
-            masked_text = masked_text.replace(tag, placeholder)
-        return masked_text, mapping
+    def _mask_rt_prefix(self, text: str) -> Tuple[str, str | None]:
+        prefix = self._extract_rt_prefix(text)
+        if prefix:
+            return text.replace(prefix, "__RT_PREFIX__ ", 1), prefix
+        return text, None
 
-    def _restore_placeholders(
-        self,
-        text: str,
-        mapping: Dict[str, str]
-    ) -> str:
-        """
-        플레이스홀더를 원본 해시태그로 복원
-        """
-        restored = text
-        for placeholder, original in mapping.items():
-            restored = restored.replace(placeholder, original)
-        return restored
+    def _restore_rt_prefix(self, text: str, prefix: str | None) -> str:
+        if not prefix:
+            return text
+        cleaned = text.replace("__RT_PREFIX__ ", "")
+        return f"{prefix}{cleaned}"
 
-    def _force_restore_hashtags(
-        self,
-        original_text: str,
-        translated_text: str
-    ) -> str:
-        """
-        번역 과정 중 LLM이 해시태그 형식을 수정했을 경우
-        원본 해시태그 순서를 기준으로 재삽입
-        """
-        orig_tags = self._extract_hashtags(original_text)
-        idx = 0
-        def replace_fn(match):
-            nonlocal idx
-            if idx < len(orig_tags):
-                tag = orig_tags[idx]
-                idx += 1
-                return tag
-            return match.group(0)
-        return self._HT_PATTERN.sub(replace_fn, translated_text)
+    # ─── 특정 이모지 마스킹 및 복원 ─────────────────────────────────
+
+    def _mask_hash_emoji(self, text: str) -> Tuple[str, str | None]:
+        if self._HASH_EMOJI in text:
+            return text.replace(self._HASH_EMOJI, "__HASH_EMOJI__"), self._HASH_EMOJI
+        return text, None
+
+    def _restore_hash_emoji(self, text: str, emoji: str | None) -> str:
+        return text.replace("__HASH_EMOJI__", emoji) if emoji else text
 
     # ─── 트윗 번역 처리 ─────────────────────────────────────────
+
     async def translate(
             self,
             tweet_text: str,
             tweet_timestamp: str
-    )-> TranslationResult:
+    ) -> TranslationResult:
         """
         트윗 텍스트를 번역하고 LLM 분류 결과를 포함하여 반환
 
         과정:
-          1) 해시태그 마스킹
-          2) RAGService로부터 참조 문맥 획득
-          3) 시스템 프롬프트 구성
-          4) OpenAI chat completion 호출
-          5) 결과 포맷 파싱(␞ 구분자)
-          6) 플레이스홀더 역치환 및 해시태그 보강
-
-        Args:
-          tweet_text:     원본 트윗 텍스트
-          tweet_timestamp: 트윗 작성 시각 ("YYYY-MM-DD HH:MM:SS")
-
-        Returns:
-          TranslationResult(번역문, 분류, 시작/종료 시간)
+          1) 특수 이모지(#⃣) 마스킹
+          2) RT 프리픽스 마스킹
+          3) 원본 이모지 추출
+          4) RAG 컨텍스트 로드
+          5) 시스템 프롬프트 구성
+          6) OpenAI 호출
+          7) 결과 파싱(␞ 구분자)
+          8) RT, 특수 이모지 복원
+          9) 이모지 후처리
         """
-        # 1) 해시태그 마스킹
-        masked_text, ht_map = self._mask_hashtags(tweet_text)
-        # 2) RAG 컨텍스트 로드
-        contexts = self.rag.get_context(masked_text)
+        # 1) 특수 이모지 마스킹
+        masked, hash_emoji = self._mask_hash_emoji(tweet_text)
+        # 2) RT 프리픽스 마스킹
+        masked, rt_prefix = self._mask_rt_prefix(masked)
+        # 3) 원본 이모지 추출
+        orig_emojis = self._EMOJI_PATTERN.findall(tweet_text)
+
+        # 4) RAG 컨텍스트 로드
+        contexts = self.rag.get_context(masked)
         logger.info("[LLMService] 최종 RAG 컨텍스트: %s", contexts)
-        # 3) 시스템 프롬프트 준비
-        system_prompt = SYSTEM_PROMPTS[PromptType.TRANSLATE].format(
-            timestamp=tweet_timestamp
+
+        # 5) 시스템 프롬프트 준비
+        system = SYSTEM_PROMPTS[PromptType.TRANSLATE].format(timestamp=tweet_timestamp)
+        enriched = (
+            system
+            + "\n\n### Reference dictionary:\n"
+            + "\n".join(f"- {c}" for c in contexts)
+            + "\n\n"
         )
-        enriched_prompt = (
-                system_prompt
-                + "\n\n### Reference dictionary:\n"
-                + "\n".join(f"- {c}" for c in contexts)
-                + "\n\n"
-        )
-        # 4) OpenAI 호출
+
+        # 6) OpenAI 호출
         try:
-            response = await self.openai.chat.completions.create(
+            resp = await self.openai.chat.completions.create(
                 model="gpt-4o-mini-2024-07-18",
                 messages=[
-                    {"role": "system", "content": enriched_prompt},
-                    {"role": "user", "content": masked_text.strip()},
+                    {"role": "system", "content": enriched},
+                    {"role": "user", "content": masked.strip()},
                 ],
                 temperature=0.3,
             )
-            raw_content = response.choices[0].message.content.strip()
-            logger.debug("[LLMService] Raw response: %s", raw_content)
-            # 5) 구분자(␞) 기반 파싱
-            if raw_content.startswith("번역문"):
-                raw_content = raw_content[len("번역문"):].lstrip()
-            parts = [part.strip() for part in raw_content.split("␞", 3)]
+            raw = resp.choices[0].message.content.strip()
+            logger.info("[LLMService] Raw response: %s", raw)
+            if raw.startswith("번역문"):
+                raw = raw[len("번역문"):].lstrip()
+            parts = [p.strip() for p in raw.split("␞", 3)]
             if len(parts) != 4:
-                logger.warning(
-                    "LLM 포맷 불일치: %s", parts
-                )
-                trans_masked = masked_text
+                logger.warning("LLM 포맷 불일치: %s", parts)
+                trans_masked = masked
                 category = "일반"
                 start_str = end_str = None
             else:
                 trans_masked, category, start_str, end_str = parts
                 start_str = None if start_str.lower() == "none" else start_str
                 end_str = None if end_str.lower() == "none" else end_str
-        except Exception as error:
-            logger.error(
-                "[LLMService] 번역 오류 발생, 기본값 사용: %s", error,
-                exc_info=True
-            )
-            trans_masked = masked_text
-            category = "일반"
-            start_str = end_str = None
-        # 6) 플레이스홀더 복원 및 해시태그 보강
-        translated_text = self._restore_placeholders(trans_masked, ht_map)
-        translated_text = self._force_restore_hashtags(tweet_text, translated_text)
+        except Exception as e:
+            logger.error("[LLMService] 번역 오류, 기본값 사용: %s", e, exc_info=True)
+            trans_masked = masked; category = "일반"; start_str = end_str = None
+
+        # 8) 복원
+        text = trans_masked
+        text = self._restore_rt_prefix(text, rt_prefix)
+        text = self._restore_hash_emoji(text, hash_emoji)
+
+        # 9) 이모지 후처리: 원본 이모지 중 없어진 것은 끝에 추가
+        missing = [em for em in orig_emojis if em not in text]
+        if missing:
+            text += "".join(missing)
+
         return TranslationResult(
-            translated=translated_text,
+            translated=text,
             category=category,
             start=start_str,
             end=end_str,
@@ -185,7 +155,7 @@ class LLMService:
         """
         system_prompt = SYSTEM_PROMPTS[PromptType.REPLY]
         try:
-            response = await self.openai.chat.completions.create(
+            resp = await self.openai.chat.completions.create(
                 model="gpt-4o-mini-2024-07-18",
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -193,11 +163,7 @@ class LLMService:
                 ],
                 temperature=0.5,
             )
-            reply_msg = response.choices[0].message.content.strip()
-            return ReplyResult(reply_text=reply_msg)
+            return ReplyResult(reply_text=resp.choices[0].message.content.strip())
         except Exception as error:
-            logger.error(
-                "[LLMService] 자동 리플라이 생성 오류: %s", error,
-                exc_info=True
-            )
+            logger.error("[LLMService] 자동 리플라이 생성 오류: %s", error, exc_info=True)
             raise

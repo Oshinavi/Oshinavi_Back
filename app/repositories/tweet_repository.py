@@ -1,7 +1,10 @@
 import logging
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+
+from datetime import datetime
+from typing import Optional
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 
 from app.models.post import Post
@@ -21,13 +24,13 @@ class TweetRepository:
         """
         self.session = session
 
-    async def list_tweet_ids(self) -> set[str]:
+    async def list_tweet_ids(self) -> set[int]:
         """
         DB에 저장된 모든 트윗 ID를 문자열 집합으로 반환
         """
         query = select(Post.tweet_id)
         result = await self.session.execute(query)
-        return {str(row) for row in result.scalars().all()}
+        return set(result.scalars().all())
 
     async def list_recent_posts(self, limit: int = 20) -> list[Post]:
         """
@@ -43,6 +46,44 @@ class TweetRepository:
             .limit(limit)
         )
         result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def list_posts_by_cursor(
+            self,
+            twitter_id: str,
+            limit: int,
+            last_date: Optional[datetime] = None,
+            last_id: Optional[int] = None,
+    ) -> list[Post]:
+        """
+        keyset pagination:
+          - last_date, last_id 가 None 이면 맨 위부터(limit 개)
+          - 아니면 (tweet_date, tweet_id) < (last_date, last_id) 인 것부터 limit 개
+        """
+        q = (
+            select(Post)
+            .join(TwitterUser, Post.author_internal_id == TwitterUser.twitter_internal_id)
+            .where(TwitterUser.twitter_id == twitter_id)
+        )
+
+        if last_date and last_id:
+            q = q.where(
+                or_(
+                    Post.tweet_date < last_date,
+                    and_(
+                        Post.tweet_date == last_date,
+                        Post.tweet_id < last_id,
+                    )
+                )
+            )
+
+        q = (
+            q.options(selectinload(Post.author))
+            .order_by(Post.tweet_date.desc(), Post.tweet_id.desc())
+            .limit(limit)
+        )
+
+        result = await self.session.execute(q)
         return result.scalars().all()
 
     async def list_posts_by_username(self, twitter_id: str, limit: int = 20) -> list[Post]:
