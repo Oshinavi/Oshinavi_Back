@@ -137,25 +137,37 @@ async def get_tweet_replies(
         )
 
 @router.post(
-    "/reply/auto_generate",
+    "/{tweet_id}/reply/auto_generate",
     status_code=status.HTTP_200_OK,
     response_model=Dict[str, str]
 )
 async def auto_generate_reply(
+    tweet_id: int,
     req: AutoReplyRequest,
+    twitter_service: TwitterService = Depends(get_twitter_service),
     llm_service: LLMService = Depends(get_llm_service),
-) -> Union[Dict[str, str], JSONResponse]:
+) -> Dict[str, str]:
     """
-    LLMService를 이용해 주어진 tweet_text에 대한 자동 응답 메시지를 생성합니다.
+    트윗에 달린 리플들 중 두 번째를 제외한 나머지를
+    LLM 컨텍스트로 넘겨 자동 리플라이를 생성합니다.
     """
     try:
-        result: ReplyResult = await llm_service.reply(req.tweet_text)
+        # 1) 해당 트윗의 리플 조회
+        raw_replies = await twitter_service.fetch_replies(tweet_id)
+        # 2) 2번째(인덱스 1) 제외
+        contexts = [r["text"] for i, r in enumerate(raw_replies) if i != 1]
+        formatted = "\n".join(f"- {c}" for c in contexts)
+        # 3) LLM 호출
+        result: ReplyResult = await llm_service.reply(req.tweet_text, contexts)
         return {"reply": result.reply_text}
+    except NotFoundError as e:
+        # 트윗이나 리플을 못 찾았을 때
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception:
-        logger.exception("[auto_generate_reply] 자동 리플라이 생성 중 오류 발생")
-        return JSONResponse(
-            content={"error": "자동 리플라이 생성에 실패했습니다."},
+        logger.exception("[auto_generate_reply] 오류, tweet_id=%s", tweet_id)
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="자동 리플라이 생성에 실패했습니다."
         )
 
 

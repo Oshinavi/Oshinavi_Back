@@ -24,5 +24,5 @@ class LLMService:
     async def extract_schedule(self, text: str, timestamp: str) -> tuple[str, str]:
         return await self.pipeline.extract_schedule(text, timestamp)
 
-    async def reply(self, text: str) -> ReplyResult:
-        return await self.pipeline.generate_reply(text)
+    async def reply(self, text: str, contexts: list[str]) -> ReplyResult:
+        return await self.pipeline.generate_reply(text, contexts)

@@ -58,6 +58,10 @@ class LLMPipelineService:
             None if end.lower() == "none" else end,
         )
 
-    async def generate_reply(self, text: str) -> ReplyResult:
-        reply_text = await asyncio.to_thread(self.reply_chain.run, text)
+    async def generate_reply(self, text: str, contexts: list[str]) -> ReplyResult:
+        # 리스트를 한 덩어리 문자열로 합치기
+        contexts_str = "\n".join(f"- {c}" for c in contexts)
+        def _sync_run():
+            return self.reply_chain.run(text, contexts_str)
+        reply_text = await asyncio.to_thread(_sync_run)
         return ReplyResult(reply_text=reply_text)

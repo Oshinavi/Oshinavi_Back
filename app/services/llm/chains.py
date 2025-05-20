@@ -148,15 +148,16 @@ class ReplyChain:
         )
 
         few = get_few_shot_examples(PromptType.REPLY)
-        system_all = f"""{few}
-
-{SYSTEM_PROMPTS[PromptType.REPLY].strip()}"""
+        system_all = f"{few}\n\n{SYSTEM_PROMPTS[PromptType.REPLY].strip()}"
 
         prompt = PromptTemplate(
-            input_variables=["system", "text"],
+            input_variables=["system", "contexts", "text"],
             template="""
 <|system|>
 {system}
+
+Existing replies (excluding the second one):
+{contexts}
 
 <|user|>
 {text}
@@ -164,7 +165,15 @@ class ReplyChain:
         )
         self.chain = LLMChain(llm=self.llm, prompt=prompt, output_key="reply")
 
-    def run(self, text: str) -> str:
+    def run(self, text: str, contexts: str) -> str:
         few = get_few_shot_examples(PromptType.REPLY)
         system_all = f"{few}\n\n{SYSTEM_PROMPTS[PromptType.REPLY].strip()}"
-        return self.chain.predict(system=system_all, text=text)
+        if contexts:
+            system_all += f"\n\n# Context replies:\n{contexts}"
+        logger.info("[ReplyChain] -> system prompt:\n%s", system_all)
+
+        return self.chain.predict(
+            system=system_all,
+            contexts=contexts,
+            text=text,
+        )
