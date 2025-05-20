@@ -19,6 +19,7 @@ from app.services.llm.llm_service import LLMService
 from app.schemas.llm_schema import TranslationResult
 from app.utils.tco_resolver import TcoResolver
 from app.utils.exceptions import NotFoundError
+from twikit.errors import NotFound as TwikitNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +298,48 @@ class TwitterService:
 
         return category, start or None, end or None, class_title, class_desc
 
+    async def fetch_replies(
+            self,
+            tweet_id: int,
+            cursor: int = 0,
+            count: int = 20,
+    ) -> List[dict]:
+        """
+        주어진 tweet_id 에 달린 리플들을 offset(cursor) 기반으로 페이징하여 반환
+        - cursor: 리스트 시작 인덱스
+        - count: 가져올 개수
+        """
+        # 1) 로그인 보장
+        await self.twitter_client.ensure_login()
+        client = self.twitter_client.get_client()
+
+        # 2) 트윗 객체 가져오기
+        tweet = await client.get_tweet_by_id(str(tweet_id))
+        if not tweet:
+            raise NotFoundError(f"Tweet {tweet_id} not found")
+
+        # 3) .replies 리스트에서 cursor/count 만큼 슬라이스
+        raw = getattr(tweet, "replies", []) or []
+        page = raw[cursor: cursor + count]
+
+        # 4) @screen_name 제거하고 필요한 필드만 추출
+        out: List[dict] = []
+        for r in page:
+            # 트윗 텍스트 맨 앞의 멘션(@아이디) 제거
+            text = re.sub(r'^@\w+\s*', '', r.full_text or '')
+            out.append({
+                "id": int(r.id),
+                "screen_name": r.user.screen_name,
+                "user_name": r.user.name,
+                "text": text,
+                "profile_image_url": getattr(r.user, "profile_image_url_https", None)
+                                     or getattr(r.user, "profile_image_url", None),
+                "created_at": getattr(r, "created_at", None),
+                "is_mine": str(r.user.id) == self.twitter_client.user_id,
+            })
+
+        return out
+
     async def send_reply(self, tweet_id: int, tweet_text: str) -> dict:
         await self.twitter_client.ensure_login()
         client = self.twitter_client.get_client()
@@ -305,240 +348,43 @@ class TwitterService:
         if not tweet:
             raise NotFoundError("해당 트윗이 존재하지 않습니다.")
 
+        # 1) 답글 생성
         result = await client.create_tweet(text=tweet_text, reply_to=str(tweet_id))
+
+        # 2) DB에 로그 남기기
         log    = ReplyLog(post_tweet_id=tweet_id, reply_text=tweet_text)
         self.repo.add_reply_log(log)
         await self.repo.commit()
 
-        return {
-            "reply_tweet_id": str(result.id),
-            "created_at":     result.created_at,
-            "text":           result.text,
+        # 3) Twikit Tweet 객체 → 프론트에 일관된 형식(dict)으로 변환
+        reply_dict = {
+            "id": int(result.id),
+            "screen_name": result.user.screen_name,
+            "user_name": result.user.name,
+            "text": result.full_text,
+            "profile_image_url": (
+                getattr(result.user, "profile_image_url_https", None)
+                or getattr(result.user, "profile_image_url", None)
+            ),
+            "created_at": result.created_at,
+            "is_mine": True
         }
+        return reply_dict
 
+    async def delete_reply(self, reply_id: int) -> None:
+        """
+        주어진 reply_id(트윗 ID)에 해당하는 트윗(리플라이)을 삭제합니다.
+        """
+        # 1) 로그인 보장
+        await self.twitter_client.ensure_login()
+        client = self.twitter_client.get_client()
 
-# # app/services/twitter/twitter_service.py
-#
-# import json
-# import logging
-# from datetime import datetime, timedelta
-# from typing import Union, Optional, List, Tuple
-#
-# from sqlalchemy.exc import IntegrityError
-# from selenium.common.exceptions import TimeoutException
-#
-# from app.models.reply_log import ReplyLog
-# from app.models.post import Post
-# from app.repositories.tweet_repository import TweetRepository
-# from app.services.twitter.twitter_client_service import TwitterClientService
-# from app.services.twitter.twitter_user_service import TwitterUserService
-# from app.services.llm.llm_service import LLMService
-# from app.schemas.llm_schema import TranslationResult
-# from app.utils.tco_resolver import TcoResolver
-# from app.utils.exceptions import NotFoundError
-#
-# logger = logging.getLogger(__name__)
-#
-# class TwitterService:
-#     """
-#     최신 트윗 저장 및 리플라이 전송
-#     """
-#     def __init__(
-#         self,
-#         db,
-#         llm_service: LLMService,
-#         user_internal_id: str,
-#     ):
-#         self.repo           = TweetRepository(db)
-#         self.llm            = llm_service
-#         self.twitter_client = TwitterClientService(user_internal_id)
-#         self.twitter_user   = TwitterUserService(self.twitter_client)
-#         self.resolver       = TcoResolver()
-#
-#     async def _extract_image_urls(self, media_entries: list) -> List[str]:
-#         """
-#         twikit media 객체 대신 t.co 링크를 TcoResolver 로 처리
-#         — 사진(photo) 타입만 가져오고, 영상이나 GIF는 건너뜁니다.
-#         — Selenium 타임아웃 등 에러 발생 시 그냥 무시하고 넘어갑니다.
-#         """
-#         raw_urls = []
-#         for m in media_entries or []:
-#             if getattr(m, "type", None) != "photo":
-#                 continue
-#             url = getattr(m, "media_url_https", None) or getattr(m, "url", None)
-#             if url:
-#                 raw_urls.append(url)
-#
-#         resolved = []
-#         for url in raw_urls:
-#             try:
-#                 imgs = await self.resolver.resolve([url])
-#             except TimeoutException:
-#                 logger.warning("이미지 추출 타임아웃, 건너뜀: %s", url)
-#                 continue
-#             except Exception as e:
-#                 logger.error("미디어 URL 처리 오류 %s: %s", url, e, exc_info=True)
-#                 continue
-#
-#             if imgs:
-#                 resolved.extend(imgs)
-#
-#         return resolved
-#
-#     async def fetch_and_store_latest_tweets(
-#         self,
-#         screen_name: str,
-#         count: int = 20,
-#         cursor: Optional[str] = None
-#     ) -> Tuple[List[dict], Optional[str]]:
-#         # 1) 로그인
-#         await self.twitter_client.ensure_login()
-#
-#         # 2) 사용자 정보 조회
-#         user = await self.twitter_user.get_user_info(screen_name)
-#         if not user:
-#             raise NotFoundError(f"User '{screen_name}' not found")
-#
-#         author_id         = str(user["id"])
-#         profile_image_url = user.get("profile_image_url")
-#         client            = self.twitter_client.get_client()
-#
-#         # 3) 트윗 페치
-#         tweets = await client.get_user_tweets(
-#             user_id=author_id,
-#             tweet_type="Tweets",
-#             count=count,
-#             cursor=cursor,
-#         )
-#         next_cursor = getattr(tweets, "next_cursor", None)
-#
-#         # --- DB에 이미 저장된 ID, 기존 포스트 조회 ---
-#         existing_ids = set(await self.repo.list_tweet_ids())
-#         all_posts    = await self.repo.list_posts_by_username(screen_name)
-#         posts_map    = {p.tweet_id: p for p in all_posts}
-#
-#         serialized: List[dict] = []
-#         new_posts: List[Post] = []
-#
-#         for t in tweets:
-#             tid = int(t.id)
-#
-#             # DB에 이미 있으면, 저장된 값을 직렬화만
-#             if tid in existing_ids:
-#                 p = posts_map[tid]
-#                 serialized.append({
-#                     "tweet_userid": p.author.twitter_id,
-#                     "tweet_id":     p.tweet_id,
-#                     "tweet_username": p.author.username,
-#                     "tweet_date":   p.tweet_date.strftime("%Y-%m-%d %H:%M:%S"),
-#                     "tweet_text":   p.tweet_text,
-#                     "tweet_translated_text": p.tweet_translated_text,
-#                     "tweet_about":  p.tweet_about,
-#                     "tweet_included_start_date": (
-#                         p.tweet_included_start_date.strftime("%Y-%m-%d %H:%M:%S")
-#                         if p.tweet_included_start_date else None
-#                     ),
-#                     "tweet_included_end_date": (
-#                         p.tweet_included_end_date.strftime("%Y-%m-%d %H:%M:%S")
-#                         if p.tweet_included_end_date else None
-#                     ),
-#                     "image_urls": json.loads(p.image_urls) if p.image_urls else [],
-#                     "profile_image_url": profile_image_url,
-#                 })
-#                 continue
-#
-#             # 새로운 트윗: 번역 및 이미지 추출
-#             text = t.full_text
-#             date_str = _format_dt(t.created_at)
-#             try:
-#                 tr: TranslationResult = await self.llm.translate(text, date_str)
-#             except Exception:
-#                 tr = TranslationResult(
-#                     translated=text,
-#                     category="일반",
-#                     start=None,
-#                     end=None,
-#                 )
-#
-#             img_urls = await self._extract_image_urls(t.media)
-#             tweet_date = _parse_any_datetime(t.created_at)
-#
-#             # DB에 저장
-#             post = Post(
-#                 tweet_id                  = tid,
-#                 author_internal_id        = author_id,
-#                 tweet_date                = tweet_date,
-#                 tweet_included_start_date = _parse_any_datetime(tr.start),
-#                 tweet_included_end_date   = _parse_any_datetime(tr.end),
-#                 tweet_text                = text,
-#                 tweet_translated_text     = tr.translated,
-#                 tweet_about               = tr.category,
-#                 image_urls                = json.dumps(img_urls),
-#             )
-#             self.repo.add_post(post)
-#             new_posts.append(post)
-#
-#             serialized.append({
-#                 "tweet_userid": screen_name,
-#                 "tweet_id":     tid,
-#                 "tweet_username": screen_name,
-#                 "tweet_date":   date_str,
-#                 "tweet_text":   text,
-#                 "tweet_translated_text": tr.translated,
-#                 "tweet_about":  tr.category,
-#                 "tweet_included_start_date": tr.start,
-#                 "tweet_included_end_date": tr.end,
-#                 "image_urls": img_urls,
-#                 "profile_image_url": profile_image_url,
-#             })
-#
-#         # 새로운 포스트가 있으면 커밋
-#         if new_posts:
-#             try:
-#                 await self.repo.commit()
-#             except IntegrityError:
-#                 logger.warning("중복 엔트리 충돌, 롤백")
-#                 await self.repo.rollback()
-#
-#         return serialized, next_cursor
-#
-#     async def send_reply(self, tweet_id: int, tweet_text: str) -> dict:
-#         await self.twitter_client.ensure_login()
-#         client = self.twitter_client.get_client()
-#
-#         tweet = await client.get_tweet_by_id(str(tweet_id))
-#         if not tweet:
-#             raise NotFoundError("해당 트윗이 존재하지 않습니다.")
-#
-#         result = await client.create_tweet(text=tweet_text, reply_to=str(tweet_id))
-#         log    = ReplyLog(post_tweet_id=tweet_id, reply_text=tweet_text)
-#         self.repo.add_reply_log(log)
-#         await self.repo.commit()
-#
-#         return {
-#             "reply_tweet_id": str(result.id),
-#             "created_at":     result.created_at,
-#             "text":           result.text,
-#         }
-#
-# def _parse_any_datetime(dt: Union[str, datetime, None]) -> Optional[datetime]:
-#     if not dt:
-#         return None
-#     if isinstance(dt, datetime):
-#         return dt
-#     s = dt.strip()
-#     try:
-#         utc = datetime.strptime(s, "%a %b %d %H:%M:%S %z %Y")
-#         return utc + timedelta(hours=9)
-#     except Exception:
-#         pass
-#     try:
-#         return datetime.strptime(s, "%Y.%m.%d %H:%M:%S")
-#     except Exception:
-#         return None
-#
-#
-# def _format_dt(dt: Union[str, datetime]) -> str:
-#     if isinstance(dt, datetime):
-#         return dt.strftime("%Y-%m-%d %H:%M:%S")
-#     return dt  # 이미 문자열이면 그대로 반환
+        # 2) 삭제 호출
+        try:
+            await client.delete_tweet(str(reply_id))
+        except TwikitNotFound:
+            # twikit에서 못 찾으면 우리의 NotFoundError로 변환
+            raise NotFoundError(f"Reply {reply_id} not found")
+
+        # DB 로그에서도 삭제
+        await self.repo.delete_reply_log(reply_id)

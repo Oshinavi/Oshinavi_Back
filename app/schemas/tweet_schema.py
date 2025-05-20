@@ -50,6 +50,19 @@ class TweetMetadataResponse(BaseModel):
     schedule_title: Optional[str]
     schedule_description: Optional[str]
 
+class ReplyResponse(BaseModel):
+    """
+    단일 리플(답글) 정보를 담는 모델
+    """
+    id: int
+    screen_name: str
+    user_name: str
+    text: str
+    profile_image_url: Optional[str]
+    created_at: str
+    is_mine: bool
+
+
 # ─── 트윗 관련 요청 스키마 정의 ─────────────────────────────────────────
 
 class AutoReplyRequest(BaseModel):

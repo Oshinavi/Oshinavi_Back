@@ -1,7 +1,7 @@
 # app/routers/tweet_router.py
 
 import logging
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -11,12 +11,15 @@ from app.schemas.tweet_schema import (
     AutoReplyRequest,
     SendReplyRequest,
     TweetPageResponse,
-    TweetResponse, TweetMetadataResponse,
+    TweetMetadataResponse, ReplyResponse,
 )
 from app.dependencies import get_llm_service, get_twitter_service
 from app.services.twitter.twitter_service import TwitterService
 from app.services.llm.llm_service import LLMService
 from app.utils.exceptions import NotFoundError
+from twikit.errors import DuplicateTweet as TwikitDuplicateTweet
+from fastapi import Response
+from twikit.errors import NotFound as TwikitNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +109,33 @@ async def get_tweet_metadata(
             detail="분류·일정 정보를 가져오지 못했습니다."
         )
 
+@router.get(
+    "/{tweet_id}/replies",
+    response_model=List[ReplyResponse],
+    status_code=status.HTTP_200_OK,
+    summary="특정 트윗의 리플(답글) 목록 조회"
+)
+async def get_tweet_replies(
+    tweet_id: int,
+    twitter_service: TwitterService = Depends(get_twitter_service),
+) -> List[ReplyResponse]:
+    """
+    1) TwitterService.fetch_replies 로 실제 리플을 가져오고,
+    2) Pydantic ReplyResponse 리스트로 반환합니다.
+    """
+    try:
+        raw = await twitter_service.fetch_replies(tweet_id)
+        # Pydantic 으로 자동 변환
+        return [ReplyResponse(**r) for r in raw]
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        logger.exception("[get_tweet_replies] 오류, tweet_id=%s", tweet_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="리플을 가져오는 중 오류가 발생했습니다."
+        )
+
 @router.post(
     "/reply/auto_generate",
     status_code=status.HTTP_200_OK,
@@ -132,30 +162,59 @@ async def auto_generate_reply(
 @router.post(
     "/reply/{tweet_id}",
     status_code=status.HTTP_200_OK,
-    response_model=Dict[str, str]
+    response_model=ReplyResponse,
+    summary="해당 트윗에 답글 보내기"
 )
 async def send_reply(
     tweet_id: int,
     req: SendReplyRequest,
     twitter_service: TwitterService = Depends(get_twitter_service),
-) -> Union[Dict[str, str], JSONResponse]:
+) -> ReplyResponse:
     """
-    TwitterService를 통해 특정 트윗(tweet_id)에 리플라이를 전송합니다.
-    1) 로그인 유저 레코드 조회
-    2) TwitterService 생성
-    3) 리플라이 전송 실행
+    1) client.create_tweet 으로 답글 생성
+    2) DB에 로그 저장
+    3) 생성된 답글(Tweet)을 ReplyResponse 로 반환
     """
     try:
-        result = await twitter_service.send_reply(tweet_id, req.tweet_text)
-        return {
-            "reply_tweet_id": result["reply_tweet_id"],
-            "text":           result["text"],
-        }
-    except HTTPException:
-        raise
+        reply_dict = await twitter_service.send_reply(tweet_id, req.tweet_text)
+        return ReplyResponse(**reply_dict)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except TwikitDuplicateTweet:
+        # 중복된 내용으로 트윗을 보내면 발생하는 오류
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="중복된 리플라이입니다."
+        )
     except Exception:
         logger.exception("[send_reply] 리플라이 전송 중 오류: %s", tweet_id)
-        return JSONResponse(
-            content={"error": "리플라이 전송 실패"},
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="리플라이 전송 실패"
+        )
+
+@router.delete(
+    "/reply/{reply_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="내가 보낸 리플라이 삭제"
+)
+async def delete_reply(
+    reply_id: int,
+    twitter_service: TwitterService = Depends(get_twitter_service),
+) -> Response:
+    """
+    1) twikit.delete_tweet 으로 트윗(리플라이) 삭제
+    2) DB 로그(ReplyLog)에서도 제거
+    3) 204 No Content 반환
+    """
+    try:
+        await twitter_service.delete_reply(reply_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        logger.exception("[delete_reply] 오류, reply_id=%s", reply_id)
+        raise HTTPException(
+            status_code=500,
+            detail="리플라이 삭제에 실패했습니다."
         )

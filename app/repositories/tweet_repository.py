@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, delete
 from sqlalchemy.orm import selectinload
 
 from app.models.post import Post
@@ -144,3 +144,12 @@ class TweetRepository:
         트랜잭션 롤백
         """
         await self.session.rollback()
+
+    async def delete_reply_log(self, tweet_id: int) -> None:
+        """
+        ReplyLog 에 저장된, post_tweet_id == tweet_id 인 행을 모두 삭제합니다.
+        """
+        await self.session.execute(
+            delete(ReplyLog).where(ReplyLog.post_tweet_id == tweet_id)
+        )
+        await self.commit()
