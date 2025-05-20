@@ -1,10 +1,12 @@
 # app/services/twitter/twitter_service.py
 
+import re
 import json
 import logging
 from datetime import datetime, timedelta
 from typing import Union, Optional, List, Tuple
 
+import asyncio
 from sqlalchemy.exc import IntegrityError
 from selenium.common.exceptions import TimeoutException
 
@@ -125,7 +127,9 @@ class TwitterService:
                     tr.start,
                     tr.end,
                 )
-            except:
+            except Exception as e:
+            # 에러 로그를 남기고, 원문 fallback
+                logger.exception("LLM 번역 중 오류, tweet_id=%s", tid)
                 tr = TranslationResult(translated=text, category="일반", start=None, end=None)
 
             # 이미지 추출
@@ -215,6 +219,83 @@ class TwitterService:
             next_db = None
 
         return serialized, next_db
+
+    async def classify_and_schedule(
+            self, tweet_id: int
+    ) -> Tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        1) DB에서 해당 tweet_id의 Post 조회
+        2) 이미 분류·일정이 설정되어 있으면 바로 반환
+        3) 그렇지 않으면, LLMService.classify, .extract_schedule 호출
+           → DB 업데이트 후 결과 반환
+        """
+        post = await self.repo.get_post_by_tweet_id(tweet_id)
+        if not post:
+            raise NotFoundError(f"Tweet {tweet_id} not found")
+
+        # 이미 한 번 처리된 경우
+        if post.schedule_checked:
+            return (
+                post.tweet_about,
+                post.tweet_included_start_date.strftime("%Y-%m-%d %H:%M:%S")
+                if post.tweet_included_start_date else None,
+                post.tweet_included_end_date.strftime("%Y-%m-%d %H:%M:%S")
+                if post.tweet_included_end_date else None,
+                post.schedule_title,
+                post.schedule_description,
+            )
+
+        # ── LLM으로 새로 분류·일정 추출 ─────────────────────────────
+        base_text = post.tweet_text
+        date_str = post.tweet_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1) 분류
+        category, class_title, class_desc = await self.llm.classify(base_text)
+        logger.info(
+            "LLM 분류 결과 ▶ tweet_id=%s  category=%s  title=%s  desc=%s",
+            tweet_id,
+            category,
+            class_title,
+            class_desc,
+        )
+
+        # 2) 스케줄 원시 추출 (to_thread로 sync 호출, timestamp 추가)
+        raw = await asyncio.to_thread(
+            self.llm.pipeline.sched_chain.run,
+            base_text,
+            date_str
+        )
+        first_line = raw.strip().splitlines()[0]
+        if not re.match(
+                r'^(?:\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}|None) ␞ (?:\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}|None)$',
+                first_line):
+            first_line = "None ␞ None"
+
+        raw = first_line
+        logger.info(
+            "LLM 스케줄 원시 결과(후처리) ▶ tweet_id=%s  raw=\"%s\"",
+            tweet_id,
+            raw.replace("\n", "\\n")
+        )
+
+        # 3) 파싱된 시작/종료
+        start, end = [s.strip() for s in raw.split("␞", 1)]
+        logger.info(
+            "LLM 스케줄 파싱 결과 ▶ tweet_id=%s  start=%s  end=%s",
+            tweet_id, start, end
+        )
+
+        # 4) DB에 업데이트
+        post.tweet_about = category
+        post.tweet_included_start_date = _parse_any_datetime(start)
+        post.tweet_included_end_date = _parse_any_datetime(end)
+        post.schedule_title = class_title
+        post.schedule_description = class_desc
+        post.schedule_checked = True
+        self.repo.add_post(post)
+        await self.repo.commit()
+
+        return category, start or None, end or None, class_title, class_desc
 
     async def send_reply(self, tweet_id: int, tweet_text: str) -> dict:
         await self.twitter_client.ensure_login()

@@ -5,75 +5,62 @@ from twikit import Client
 
 logger = logging.getLogger(__name__)
 
-# ─── 트위터 클라이언트 서비스 ───────────────────────────────────────────
+MASTER_COOKIE_FILE = Path(__file__).resolve().parent.parent.parent / "config" / "twitter_cookies_master.json"
+
 class TwitterClientService:
     """
-    Twikit 기반의 비동기 트위터 클라이언트 래퍼 클래스
-    - 쿠키 파일을 통해 로그인 세션을 유지
-    - Twikit Client 객체를 제공
+    Twikit 기반 비동기 트위터 클라이언트 래퍼.
+
+    - MASTER_COOKIE_FILE 로 마스터 세션을 먼저 로드
+    - set_initial_cookies() 로 per-request ct0/auth_token 덮어쓰기
+    - ensure_login() 시, 마스터+per-user 쿠키를 클라이언트에 적용
+    - save_cookies_to_file() 로 per-user 쿠키 파일 생성
     """
     def __init__(self, user_internal_id: str):
-        """
-        Args:
-          user_internal_id: 사용자를 식별하기 위한 내부 ID (예: DB PK)
-            - 이 ID를 기반으로 사용자별 쿠키 파일명이 생성됨
-        """
-        # 내부 사용자 ID 저장
         self.user_id = user_internal_id
-        # Twikit 클라이언트 초기화 (locale 설정)
         self._client = Client("en-US")
-        # 로그인 여부 플래그
         self._logged_in = False
 
-        # 쿠키 파일 경로 설정
-        self.cookie_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "config" / f"twitter_cookies_{self.user_id}.json"
-        )
+        # per-user cookie 경로: twitter_cookies_<user_id>.json
+        self.cookie_path = MASTER_COOKIE_FILE.parent / f"twitter_cookies_{self.user_id}.json"
 
     async def ensure_login(self) -> None:
         """
-        로그인 상태를 보장
-        - 이미 로그인된 상태가 아니면 쿠키를 로드하여 로그인 수행
+        한 번도 로그인되지 않았으면 마스터 쿠키 → per-user 쿠키 순으로 로드
         """
         if not self._logged_in:
-            await self._load_cookies_and_login()
-            self._logged_in = True  # 로그인 플래그 설정
+            await self._load_cookies()
+            self._logged_in = True
 
-    async def _load_cookies_and_login(self) -> None:
-        """
-        내부 쿠키 파일을 로드하여 Twikit 로그인 처리
-        """
-        # 쿠키 파일 존재 여부 확인
-        logger.info(f"✅ 쿠키 로드 시도: {self.cookie_path!r}, exists={self.cookie_path.exists()}")
+    async def _load_cookies(self) -> None:
+        # 1) 마스터 쿠키
+        if not MASTER_COOKIE_FILE.exists():
+            raise FileNotFoundError(f"Master cookie file not found: {MASTER_COOKIE_FILE!r}")
+        master_cookies = json.loads(MASTER_COOKIE_FILE.read_text(encoding="utf-8"))
+        self._client.set_cookies(master_cookies)
+        logger.info("✅ Master cookies loaded")
+
+        # 2) per-user 쿠키(있으면)
         if self.cookie_path.exists():
-            # 파일에서 JSON 형태의 쿠키 로드
-            with open(self.cookie_path, "r", encoding="utf-8") as f:
-                cookies = json.load(f)
-            # Twikit 클라이언트에 쿠키 설정
-            self._client.set_cookies(cookies)
-            logger.info("✅ Twitter 로그인 성공 (쿠키 기반)")
-            return
-        # 쿠키 파일이 없으면 예외 발생
-        raise FileNotFoundError("쿠키 파일이 없습니다.")
+            user_cookies = json.loads(self.cookie_path.read_text(encoding="utf-8"))
+            self._client.set_cookies(user_cookies)
+            logger.info(f"✅ User cookies loaded: {self.cookie_path!r}")
+
+    def set_initial_cookies(self, ct0: str, auth_token: str) -> None:
+        """
+        프론트 전달 ct0/auth_token 으로 덮어쓰기
+        """
+        self._client.set_cookies({"ct0": ct0, "auth_token": auth_token})
 
     def get_client(self) -> Client:
-        """
-        로그인된 Twikit Client 객체를 반환
-        - 호출 전에 ensure_login()으로 인증을 보장해야 함
-        """
         return self._client
 
     def save_cookies_to_file(self) -> None:
         """
-        현재 세션 쿠키를 JSON 파일로 저장
-        - 쿠키 저장 경로에 디렉토리가 없으면 자동 생성
+        현재 세션 쿠키를 per-user 파일로 저장
         """
-        # HTTP 세션 쿠키를 dict로 추출
-        cookies = self._client.http.cookies.get_dict()
-        # 디렉토리 생성 (이미 존재해도 에러 없음)
+        # httpx.Cookies.jar → dict 변환
+        cookies = {cookie.name: cookie.value for cookie in self._client.http.cookies.jar}
         self.cookie_path.parent.mkdir(parents=True, exist_ok=True)
-        # 쿠키를 JSON 파일로 저장
-        with open(self.cookie_path, "w", encoding="utf-8") as f:
-            json_text = json.dumps(cookies)
-            f.write(json_text)
+        self.cookie_path.write_text(json.dumps(cookies), encoding="utf-8")
+        logger.info(f"✅ Saved Twitter cookies JSON: {self.cookie_path!r}")

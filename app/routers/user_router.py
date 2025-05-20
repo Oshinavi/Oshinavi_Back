@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-
+from starlette.responses import JSONResponse
 from app.core.database import get_db_session
 from app.dependencies import get_current_user, get_current_user_optional
 from app.models.user import User
@@ -13,7 +13,6 @@ from app.models.twitter_user import TwitterUser
 from app.repositories.user_repository import UserRepository
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.services.twitter.twitter_user_service import TwitterUserService
-from app.schemas.user_schema import UserProfileResponse
 from app.schemas.user_schema import (
     OshiResponse,
     OshiUpdateRequest,
@@ -92,7 +91,6 @@ async def get_my_oshi(
         oshi_username=tw_user.username
     )
 
-
 @router.put(
     "/me/oshi",
     response_model=OshiResponse,
@@ -117,7 +115,13 @@ async def update_my_oshi(
     twitter_svc = TwitterUserService(client_svc)
 
     # 2) 입력된 screen_name 검증 및 내부 ID 조회
-    info = await twitter_svc.get_user_info(payload.screen_name)
+    try:
+        info = await twitter_svc.get_user_info(payload.screen_name)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="존재하지 않는 계정 정보입니다."
+        )
     new_internal_id = str(info["id"])
 
     # 3) TwitterUser 테이블에 신규 유저 추가
@@ -149,7 +153,30 @@ async def update_my_oshi(
         oshi_screen_name=payload.screen_name,
         oshi_username=info["username"]
     )
+@router.delete(
+    "/me/oshi",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="내 오시 정보 삭제"
+)
 
+async def delete_my_oshi(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    로그인 유저의 오시(UserOshi) 정보를 삭제합니다.
+    """
+    repo = UserRepository(db)
+    try:
+        await repo.delete_user_oshi(current_user.id)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="오시 정보 삭제 중 오류가 발생했습니다."
+        )
+    # 204 No Content 이므로 아무것도 리턴하지 않음
 
 @router.get(
     "/profile",
@@ -194,4 +221,6 @@ async def get_user_profile(
         bio=info.get("bio") or "",
         profile_image_url=info.get("profile_image_url"),
         profile_banner_url=info.get("profile_banner_url"),
+        followers_count=info.get("followers_count", 0),  # ← 추가
+        following_count=info.get("following_count", 0),  # ← 추가
     )

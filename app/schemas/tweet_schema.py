@@ -43,6 +43,12 @@ class TweetPageResponse(BaseModel):
     next_remote_cursor: Optional[str]
     next_db_cursor: Optional[str]
 
+class TweetMetadataResponse(BaseModel):
+    category: str
+    start:    Optional[str]
+    end:      Optional[str]
+    schedule_title: Optional[str]
+    schedule_description: Optional[str]
 
 # ─── 트윗 관련 요청 스키마 정의 ─────────────────────────────────────────
 

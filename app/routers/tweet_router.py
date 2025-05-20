@@ -11,11 +11,12 @@ from app.schemas.tweet_schema import (
     AutoReplyRequest,
     SendReplyRequest,
     TweetPageResponse,
-    TweetResponse,
+    TweetResponse, TweetMetadataResponse,
 )
 from app.dependencies import get_llm_service, get_twitter_service
 from app.services.twitter.twitter_service import TwitterService
 from app.services.llm.llm_service import LLMService
+from app.utils.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,38 @@ async def fetch_user_tweets(
         return JSONResponse(
             {"error": "서버 오류로 트윗을 가져오지 못했습니다."},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@router.get(
+    "/{tweet_id}/metadata",
+    response_model=TweetMetadataResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_tweet_metadata(
+    tweet_id: int,
+    twitter_service: TwitterService = Depends(get_twitter_service),
+) -> TweetMetadataResponse:
+     """
+     클라이언트가 분류·일정 정보가 필요할 때 호출합니다.
+     1) DB에 이미 분류·일정이 등록되어 있으면 그대로 반환
+     2) 없으면 LLMService로 처리 → DB 업데이트 후 반환
+     """
+     try:
+         category, start, end, title, desc = await twitter_service.classify_and_schedule(tweet_id)
+         return TweetMetadataResponse(
+             category=category,
+             start=start,
+             end=end,
+             schedule_title=title,
+             schedule_description=desc,
+         )
+     except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+     except Exception:
+        logger.exception("[get_tweet_metadata] 오류, tweet_id=%s", tweet_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="분류·일정 정보를 가져오지 못했습니다."
         )
 
 @router.post(

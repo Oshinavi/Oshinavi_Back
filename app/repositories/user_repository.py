@@ -75,6 +75,23 @@ class UserRepository:
         self.session.add(new_oshi)
         return new_oshi
 
+    async def delete_user_oshi(self, user_id: int) -> None:
+        """
+        주어진 유저의 UserOshi 엔티티를 삭제
+        """
+        from app.models.user_oshi import UserOshi
+
+        # 1) UserOshi 찾기
+        query = select(UserOshi).where(UserOshi.user_id == user_id)
+        result = await self.session.execute(query)
+        existing = result.scalars().first()
+
+        # 2) 있으면 삭제
+        if existing:
+            await self.session.delete(existing)
+            # flush 는 필요에 따라
+            await self.session.flush()
+
     async def find_twitter_user_by_internal_id(
             self,
             internal_id: str

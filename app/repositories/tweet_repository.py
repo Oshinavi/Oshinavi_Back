@@ -24,6 +24,16 @@ class TweetRepository:
         """
         self.session = session
 
+    async def get_post_by_tweet_id(self, tweet_id: int) -> Post | None:
+        """
+        tweet_id로 Post 하나 조회. 없으면 None 리턴.
+        """
+
+        result = await self.session.execute(
+            select(Post).where(Post.tweet_id == tweet_id)
+        )
+        return result.scalars().first()
+
     async def list_tweet_ids(self) -> set[int]:
         """
         DB에 저장된 모든 트윗 ID를 문자열 집합으로 반환

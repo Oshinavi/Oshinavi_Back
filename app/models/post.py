@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, DateTime, Text, String, ForeignKey
+from sqlalchemy import Column, BigInteger, DateTime, Text, String, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -62,6 +62,21 @@ class Post(Base):
         Text,
         nullable=True,
         doc="트윗에 포함된 이미지 URL 리스트 (JSON)"
+    )
+    schedule_checked: bool = Column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+    )
+    schedule_title: str = Column(
+        String(255),
+        nullable=True,
+        doc="일정의 제목"
+    )
+    schedule_description: str = Column(
+        Text,
+        nullable=True,
+        doc="일정 상세 정보"
     )
 
     # User와의 관계 (Many-to-One)

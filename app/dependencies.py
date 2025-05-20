@@ -11,13 +11,11 @@ from app.core.database import get_db_session
 from app.jwt.blocklist import jwt_blocklist
 from app.repositories.user_repository import UserRepository
 from app.models.user import User
+from app.services.llm.pipeline_service import LLMPipelineService
 
 from app.services.llm.rag_service import RAGService
 from app.services.llm.llm_service import LLMService
 from app.services.twitter.twitter_service import TwitterService
-
-from app.utils.tco_resolver import TcoResolver
-from app.utils.exceptions import NotFoundError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -120,21 +118,36 @@ async def get_current_user_optional(
     except:
         return None
 
-
-async def get_llm_service(
-    settings: Settings = Depends(get_settings),
-) -> LLMService:
+def get_rag_service(
+    settings: Settings = Depends(get_settings)
+) -> RAGService:
     """
-    LLMService 의존성 주입 함수
-    - OpenAI AsyncOpenAI 클라이언트 및 RAGService를 조합하여 반환
+    RAGService를 생성해서 반환합니다.
+    Settings에서 index_path, meta_path 등을 가져오세요.
     """
-    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    rag = RAGService(
+    return RAGService(
         index_path=settings.FAISS_INDEX_PATH,
         meta_path=settings.FAISS_META_PATH,
         top_k=settings.RAG_TOP_K,
     )
-    return LLMService(openai_client, rag)
+
+def get_pipeline_service(
+    rag: RAGService = Depends(get_rag_service)
+) -> LLMPipelineService:
+    """
+    LLMPipelineService는 RAGService를 필요로 합니다.
+    """
+    return LLMPipelineService(rag)
+
+
+async def get_llm_service(
+    pipeline: LLMPipelineService = Depends(get_pipeline_service)
+) -> LLMService:
+    """
+    LLMService는 pipeline을 래핑합니다.
+    """
+    return LLMService(pipeline)
+
 
 
 async def get_twitter_service(

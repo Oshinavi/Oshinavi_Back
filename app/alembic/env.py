@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 from dotenv import load_dotenv
 
+
 # ─── 프로젝트 루트를 PYTHONPATH에 추가 ──────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -42,6 +43,15 @@ config.set_main_option("sqlalchemy.url", database_url)
 
 # ─── 메타데이터 바인딩 ─────────────────────────────────
 from app.core.database import Base  # 프로젝트 구조에 맞게 조정
+
+import app.models.twitter_user
+import app.models.post
+import app.models.user
+import app.models.user_oshi
+import app.models.schedule
+import app.models.reply_log
+import app.models.tweet_likes
+
 target_metadata = Base.metadata
 
 # ─── 마이그레이션 함수 ─────────────────────────────────

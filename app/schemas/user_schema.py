@@ -38,6 +38,12 @@ class UserProfileResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True
     )
+    followers_count: int =  Field(
+        ..., description="유저 팔로워 수"
+    )
+    following_count: int = Field(
+        ..., description="유저 팔로잉 수"
+    )
 
 class OshiResponse(BaseModel):
     """

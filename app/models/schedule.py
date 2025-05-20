@@ -4,7 +4,7 @@ from app.core.database import Base
 
 class Schedule(Base):
     """
-    유저 일정(Schedule) 모델입니다.
+    유저 일정(Schedule) 모델
     - 이벤트 제목, 분류, 시간, 설명
     - 트위터 사용자 및 유저와의 관계 정의
     """

@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # ── OpenAI ─────────────────────────────────────────────────
     OPENAI_API_KEY: str
 
+    # ── Claude ─────────────────────────────────────────────────
+    ANTHROPIC_API_KEY: str
+
     # ── RAG / FAISS ────────────────────────────────────────────
     FAISS_INDEX_PATH: str = Field(
         default=str(BASE_DIR / "rag_data" / "vector_store" / "faiss_index.bin"),

@@ -48,18 +48,21 @@ class TwitterUserService:
             logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음")
             raise NotFoundError(f"User '{screen_name}' not found")
 
+        logger.info(f"[실제값은] {screen_name} → id: {user.id}")
         return {
             "id": user.id,
             "username": self._fix_encoding(user.name),
             "bio": self._fix_encoding(user.description),
             "profile_image_url": user.profile_image_url,
             "profile_banner_url": user.profile_banner_url,
+            "followers_count": user.followers_count,
+            "following_count": user.following_count,
         }
 
     async def get_user_id(self, screen_name: str) -> str:
         info = await self.get_user_info(screen_name)
         user_id = str(info["id"])
-        logger.debug(f"[TwitterUserService] {screen_name} → id: {user_id}")
+        logger.info(f"[TwitterUserService] {screen_name} → id: {user_id}")
         return user_id
 
     async def user_exists(self, screen_name: str) -> bool:
