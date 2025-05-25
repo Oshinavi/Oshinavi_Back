@@ -64,8 +64,11 @@ class TranslationChain:
         )
 
 class ClassificationChain:
-    def __init__(self, rag_service, model_name: str = "gpt-4-0613"):
-        self.llm = ChatOpenAI(model_name=model_name)
+    def __init__(self, rag_service, model_name: str = "o4-mini-2025-04-16"):
+        self.llm = ChatOpenAI(
+            model_name=model_name,
+            temperature=1.0
+        )
         self.rag = rag_service
 
         few = get_few_shot_examples(PromptType.CLASSIFY)
@@ -100,8 +103,11 @@ class ClassificationChain:
 
 
 class ScheduleChain:
-    def __init__(self, model_name: str = "gpt-4-0613"):
-        self.llm = ChatOpenAI(model_name=model_name)
+    def __init__(self, model_name: str = "o4-mini-2025-04-16"):
+        self.llm = ChatOpenAI(
+            model_name=model_name,
+            temperature=1.0
+        )
 
         # few-shot 예시만 미리 불러 두고
         self.few = get_few_shot_examples(PromptType.SCHEDULE)
