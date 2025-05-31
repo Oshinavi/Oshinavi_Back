@@ -2,12 +2,12 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Type
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from fastapi.exceptions import RequestValidationError
 
 from app.core.config import settings
 from app.core.database import init_db
@@ -70,6 +70,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── 예외 클래스 → Status Code 매핑 ───────────────────────────────────────
+EXCEPTION_STATUS_MAP: dict[Type[Exception], int] = {
+    BadRequestError: 400,
+    ConflictError: 409,
+    NotFoundError: 404,
+    UnauthorizedError: 401,
+}
+
 @app.get("/health")
 async def health_check() -> dict:
     """
@@ -90,27 +98,14 @@ async def ensure_utf8(request: Request, call_next):
     return resp
 
 # ─── 예외 처리 핸들러 등록───────────────────────────────────────────────────
-@app.exception_handler(BadRequestError)
-async def handle_bad_request(request: Request, exc: BadRequestError) -> ORJSONResponse:
-    return ORJSONResponse(status_code=400, content={"detail": str(exc)})
-
-@app.exception_handler(ConflictError)
-async def handle_conflict(request: Request, exc: ConflictError) -> ORJSONResponse:
-    return ORJSONResponse(status_code=409, content={"detail": str(exc)})
-
-@app.exception_handler(NotFoundError)
-async def handle_not_found(request: Request, exc: NotFoundError) -> ORJSONResponse:
-    return ORJSONResponse(status_code=404, content={"detail": str(exc)})
-
-@app.exception_handler(UnauthorizedError)
-async def handle_unauthorized(request: Request, exc: UnauthorizedError) -> ORJSONResponse:
-    return ORJSONResponse(status_code=401, content={"detail": str(exc)})
-
-@app.exception_handler(RequestValidationError)
-async def handle_validation_error(request: Request, exc: RequestValidationError) -> ORJSONResponse:
-    body_bytes = await request.body()
-    logging.warning(f"⚠️ RAW BODY: {body_bytes!r}")
-    return ORJSONResponse(status_code=422, content={"detail": exc.errors()})
+async def handle_api_error(request: Request, exc: Exception):
+    """
+    커스텀 ApiError를 비롯한 예외를 일괄 처리
+    EXCEPTION_STATUS_MAP에 매핑된 예외라면 해당 상태 코드로, 그렇지 않으면 500 Internal Server Error로 반환
+    """
+    status_code = EXCEPTION_STATUS_MAP.get(type(exc), 500)
+    detail = str(exc) if hasattr(exc, "message") else repr(exc)
+    return ORJSONResponse(status_code=status_code, content={"detail": detail})
 
 # ─── 라우터 등록 ───────────────────────────────────────────────────────
 app.include_router(auth_router,      prefix="/api")

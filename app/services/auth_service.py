@@ -80,15 +80,13 @@ class AuthService:
 
         # 8) per-user 쿠키 저장
         try:
-            client_service = self.twitter_svc.client_service
-            client_service._client.set_cookies({
-                "ct0": data.ct0,
-                "auth_token": data.auth_token
-            })
-            client_service.save_cookies_to_file()
+            self.twitter_svc.client_service.set_initial_cookies(
+                ct0=data.ct0, auth_token=data.auth_token
+            )
+            self.twitter_svc.client_service.save_cookies_to_file()
             logger.info("Twitter cookies saved for user: %s", internal_id)
         except Exception as e:
-            logger.error("쿠키 저장 실패: %s", e)
+            logger.error(f"쿠키 저장 실패: {e}")
 
         # 9) 자동 로그인 토큰 발급
         return await self.login(data.email, data.password)

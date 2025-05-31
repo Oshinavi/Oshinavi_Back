@@ -36,7 +36,7 @@ async def fetch_user_tweets(
     3) db_cursor+count로 DB에서 페이지 조회(list_saved_tweets)
     4) next_db_cursor 반환
     """
-    next_remote = await svc.sync_latest_tweets(screen_name, remote_cursor, batch_size=count)
+    next_remote = await svc.synchronize_tweets(screen_name, remote_cursor, batch_size=count)
     tweets, next_db = await svc.list_saved_tweets(screen_name, count=count, db_cursor=db_cursor)
     return {"tweets": tweets, "next_remote_cursor": next_remote, "next_db_cursor": next_db}
 

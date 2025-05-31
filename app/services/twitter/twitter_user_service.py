@@ -1,4 +1,5 @@
 import logging
+from twikit.errors import NotFound as TwikitNotFound
 
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.utils.exceptions import NotFoundError
@@ -54,9 +55,17 @@ class TwitterUserService:
         """
         await self.client_service.ensure_login()
         client = self.client_service.get_client()
-        user = await client.get_user_by_screen_name(screen_name)
+        try:
+            user = await client.get_user_by_screen_name(screen_name)
+        except TwikitNotFound:
+            logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (TwikitNotFound)")
+            raise NotFoundError(f"User '{screen_name}' not found")
+        except Exception as e:
+            logger.error(f"트위터 API 호출 실패 ({screen_name}): {e}")
+            raise
+
         if not user:
-            logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음")
+            logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (None 반환)")
             raise NotFoundError(f"User '{screen_name}' not found")
 
         logger.info(f"[실제값은] {screen_name} → id: {user.id}")
@@ -69,7 +78,6 @@ class TwitterUserService:
             "followers_count": user.followers_count,
             "following_count": user.following_count,
         }
-
 
     async def get_user_id(self, screen_name: str) -> str:
         """
@@ -89,6 +97,8 @@ class TwitterUserService:
             client = self.client_service.get_client()
             user = await client.get_user_by_screen_name(screen_name)
             return user is not None and hasattr(user, "id")
+        except TwikitNotFound:
+            return False
         except Exception as e:
             logger.error(f"Twitter 존재 확인 실패: {e}")
             return False

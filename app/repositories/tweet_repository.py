@@ -106,7 +106,7 @@ class ReplyLogQueryBuilder:
 
 
 # ==================== 데이터 접근 인터페이스 ====================
-class PostDataAccess(ABC):
+class PostDataAccess:
     """Post 엔티티 데이터 접근 인터페이스"""
 
     @abstractmethod
@@ -129,9 +129,8 @@ class PostDataAccess(ABC):
         pass
 
 
-class ReplyLogDataAccess(ABC):
+class ReplyLogDataAccess:
     """ReplyLog 엔티티 데이터 접근 인터페이스"""
-
     @abstractmethod
     async def delete_by_tweet_id(self, tweet_id: int) -> None:
         pass
@@ -194,18 +193,24 @@ class PostDataAccessImpl(PostDataAccess):
     ) -> List[Post]:
         """keyset pagination으로 포스트 목록 조회"""
         try:
-            query = PostQueryBuilder.build_cursor_query(
-                twitter_id, last_date, last_id
-            ).limit(limit)
+            base_q = select(Post).options(selectinload(Post.author)) \
+                .join(TwitterUser, Post.author_internal_id == TwitterUser.twitter_internal_id) \
+                .where(TwitterUser.twitter_id == twitter_id)
 
+            if last_date and last_id:
+                base_q = base_q.where(
+                    or_(
+                        Post.tweet_date < last_date,
+                        and_(
+                            Post.tweet_date == last_date,
+                            Post.tweet_id < last_id
+                        )
+                    )
+                )
+
+            query = base_q.order_by(Post.tweet_date.desc(), Post.tweet_id.desc()).limit(limit)
             result = await self.session.execute(query)
-            posts = list(result.scalars().all())  # Sequence를 List로 명시적 변환
-
-            logger.debug(
-                f"커서 기반 포스트 조회: twitter_id={twitter_id}, "
-                f"limit={limit}, found={len(posts)}"
-            )
-            return posts
+            return list(result.scalars().all())
         except SQLAlchemyError as e:
             logger.error(f"커서 기반 포스트 조회 실패: {e}")
             raise RepositoryError(f"커서 기반 포스트 조회 중 오류: {e}")
@@ -213,15 +218,12 @@ class PostDataAccessImpl(PostDataAccess):
     async def list_posts_by_username(self, twitter_id: str, limit: int = 20) -> List[Post]:
         """특정 사용자의 포스트 목록 조회"""
         try:
-            query = PostQueryBuilder.build_user_posts_query(twitter_id).limit(limit)
+            query = select(Post).options(selectinload(Post.author)) \
+                .join(TwitterUser, Post.author_internal_id == TwitterUser.twitter_internal_id) \
+                .where(TwitterUser.twitter_id == twitter_id) \
+                .order_by(Post.tweet_date.desc()).limit(limit)
             result = await self.session.execute(query)
-            posts = list(result.scalars().all())  # Sequence를 List로 명시적 변환
-
-            logger.debug(
-                f"사용자 포스트 조회: twitter_id={twitter_id}, "
-                f"limit={limit}, found={len(posts)}"
-            )
-            return posts
+            return list(result.scalars().all())
         except SQLAlchemyError as e:
             logger.error(f"사용자 포스트 조회 실패: {e}")
             raise RepositoryError(f"사용자 포스트 조회 중 오류: {e}")
@@ -234,9 +236,10 @@ class ReplyLogDataAccessImpl(ReplyLogDataAccess):
         self.session = session
 
     async def delete_by_tweet_id(self, tweet_id: int) -> None:
+        from app.models.reply_log import ReplyLog
         """특정 트윗의 답글 로그 삭제"""
         try:
-            query = ReplyLogQueryBuilder.build_delete_query(tweet_id)
+            query = delete(ReplyLog).where(ReplyLog.post_tweet_id == tweet_id)
             await self.session.execute(query)
             logger.debug(f"답글 로그 삭제: tweet_id={tweet_id}")
         except SQLAlchemyError as e:
@@ -246,12 +249,13 @@ class ReplyLogDataAccessImpl(ReplyLogDataAccess):
 
 # ==================== 엔티티 관리자 ====================
 class PostManager:
-    """Post 엔티티 관리"""
-
+    """
+    Post 엔티티 관리 (CRUD 중 추가 책임)
+    """
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    def add(self, post: Post) -> None:
+    def insert(self, post: Post) -> None:
         """Post 엔티티를 세션에 추가"""
         try:
             self.session.add(post)
@@ -262,12 +266,14 @@ class PostManager:
 
 
 class ReplyLogManager:
-    """ReplyLog 엔티티 관리"""
+    """
+    ReplyLog 엔티티 관리
+    """
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    def add(self, reply_log: ReplyLog) -> None:
+    def insert(self, reply_log: ReplyLog) -> None:
         """ReplyLog 엔티티를 세션에 추가"""
         try:
             self.session.add(reply_log)
@@ -352,14 +358,14 @@ class TweetRepository(BaseRepository):
         """Post 객체를 세션에 추가"""
         if not isinstance(post, Post):
             raise ValueError("Post 인스턴스가 아닙니다.")
-        self.post_manager.add(post)
+        self.post_manager.insert(post)
 
     # ==================== ReplyLog 관련 메서드 ====================
     def add_reply_log(self, log: ReplyLog) -> None:
         """ReplyLog 객체를 세션에 추가"""
         if not isinstance(log, ReplyLog):
             raise ValueError("ReplyLog 인스턴스가 아닙니다.")
-        self.reply_log_manager.add(log)
+        self.reply_log_manager.insert(log)
 
     async def delete_reply_log(self, tweet_id: int) -> None:
         """

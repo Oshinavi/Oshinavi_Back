@@ -39,7 +39,6 @@ def build_database_urls() -> tuple[str, str]:
     )
     return async_url, sync_url
 
-
 # 환경 로드
 load_env()
 

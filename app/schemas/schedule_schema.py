@@ -1,15 +1,25 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
-
-# ─── 일정 관련 요청/응답 스키마 정의 ─────────────────────────────────────
 
 class ScheduleCreateRequest(BaseModel):
     """
     새로운 일정 생성 요청 모델
-    - 필수: 제목(title), 분류(category), 시작/종료 일시, 관련 트위터 스크린네임
-    - 선택: 설명(description)
     """
+    model_config = ConfigDict(
+        extra="ignore",
+        json_schema_extra={
+            "example": {
+                "title": "팬미팅 공연",
+                "category": "라이브",
+                "start_at": "2025-05-10T20:00:00",
+                "end_at": "2025-05-10T22:00:00",
+                "description": "팬미팅 공연입니다.",
+                "related_twitter_screen_name": "idol_account"
+            }
+        }
+    )
+
     title: str = Field(
         ..., description="일정 제목"
     )
@@ -29,43 +39,20 @@ class ScheduleCreateRequest(BaseModel):
         ..., description="해당 일정과 관련된 트위터 사용자의 스크린네임"
     )
 
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "title": "팬미팅 공연",
-                "category": "라이브",
-                "start_at": "2025-05-10T20:00:00",
-                "end_at": "2025-05-10T22:00:00",
-                "description": "팬미팅 공연입니다.",
-                "related_twitter_screen_name": "idol_account"
-            }
-        }
-    }
-
-
 class ScheduleUpdateRequest(BaseModel):
     """
-    기존 일정 수정 요청 모델
+    일정 수정 요청 모델
     """
-    title: Optional[str] = Field(
-        None, description="수정할 일정 제목"
-    )
-    category: Optional[str] = Field(
-        None, description="수정할 카테고리"
-    )
-    start_at: Optional[datetime] = Field(
-        None, description="수정할 시작 일시"
-    )
-    end_at: Optional[datetime] = Field(
-        None, description="수정할 종료 일시"
-    )
-    description: Optional[str] = Field(
-        None, description="수정할 설명"
-    )
+    model_config = ConfigDict(extra="ignore")
+
+    title: Optional[str] = Field(None, description="수정할 일정 제목")
+    category: Optional[str] = Field(None, description="수정할 카테고리")
+    start_at: Optional[datetime] = Field(None, description="수정할 시작 일시")
+    end_at: Optional[datetime] = Field(None, description="수정할 종료 일시")
+    description: Optional[str] = Field(None, description="수정할 설명")
     related_twitter_screen_name: Optional[str] = Field(
         None, description="수정할 관련 트위터 스크린네임"
     )
-
 
 model_config = {
         "json_schema_extra": {

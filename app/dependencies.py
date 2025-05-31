@@ -33,7 +33,7 @@ class TokenPayload(BaseModel):
     jti: str
 
 
-class AuthService:
+class JWTAuthService:
     """
     JWT 토큰 검증 서비스
     - 토큰 디코딩 & 블랙리스트 등재 검사
@@ -67,17 +67,17 @@ class AuthService:
 
 async def get_auth_service(
     settings: Settings = Depends(get_settings)
-) -> AuthService:
+) -> JWTAuthService:
     """
     AuthService 의존성 주입 함수
     - settings.env에서 JWT_SECRET_KEY와 blocklist를 받아 AuthService 생성
     """
-    return AuthService(settings.JWT_SECRET_KEY, jwt_blocklist)
+    return JWTAuthService(settings.JWT_SECRET_KEY, jwt_blocklist)
 
 
 async def get_current_user(
     request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: JWTAuthService = Depends(get_auth_service),
     db_session: AsyncSession = Depends(get_db_session),
 ) -> User:
     """
