@@ -1,4 +1,3 @@
-# app/services/auth_service.py
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -24,7 +23,7 @@ class AuthService:
     """
     인증 관련 서비스 클래스
     - 회원가입, 로그인, 로그아웃,
-    - 현재 사용자 조회 기능을 제공
+    - 현재 사용자 조회 기능 제공
     """
     def __init__(
         self,
@@ -79,7 +78,7 @@ class AuthService:
             await self.db.rollback()
             raise
 
-        # 8) **라우터에서 주입된** client_service 로 쿠키 저장
+        # 8) per-user 쿠키 저장
         try:
             client_service = self.twitter_svc.client_service
             client_service._client.set_cookies({
@@ -87,14 +86,17 @@ class AuthService:
                 "auth_token": data.auth_token
             })
             client_service.save_cookies_to_file()
-            logger.info(f"Twitter cookies saved for user: {internal_id}")
+            logger.info("Twitter cookies saved for user: %s", internal_id)
         except Exception as e:
-            logger.error(f"쿠키 저장 실패: {e}")
+            logger.error("쿠키 저장 실패: %s", e)
 
         # 9) 자동 로그인 토큰 발급
         return await self.login(data.email, data.password)
 
     async def login(self, email: str, password: str) -> dict:
+        """
+        이메일/비밀번호 로그인
+        """
         user = await self.user_repo.find_by_email(email)
         if not user or not pwd_context.verify(password, user.password):
             raise UnauthorizedError("이메일 또는 비밀번호가 올바르지 않습니다.")
@@ -117,6 +119,9 @@ class AuthService:
         }
 
     def logout(self, token: str) -> None:
+        """
+        로그아웃 + 토큰 블랙리스트 등록
+        """
         try:
             decoded = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
             jti = decoded.get("jti")
@@ -127,6 +132,12 @@ class AuthService:
 
     @staticmethod
     async def get_current_user(token: str, db: AsyncSession) -> User:
+        """
+        현재 로그인 사용자를 토큰으로 찾아 반환
+        Raises:
+            UnauthorizedError: 토큰 인증 실패 또는 블랙리스트 등록된 토큰일 때
+            NotFoundError: 이메일로 사용자를 찾지 못할 때
+        """
         try:
             payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
             email: str = payload.get("sub")

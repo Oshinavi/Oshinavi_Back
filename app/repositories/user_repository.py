@@ -14,7 +14,7 @@ class UserRepository:
     """
     def __init__(self, session: AsyncSession):
         """
-        - session: 비동기 SQLAlchemy 세션
+        session: 비동기 SQLAlchemy 세션
         """
         self.session = session
 
@@ -89,7 +89,6 @@ class UserRepository:
         # 2) 있으면 삭제
         if existing:
             await self.session.delete(existing)
-            # flush 는 필요에 따라
             await self.session.flush()
 
     async def find_twitter_user_by_internal_id(

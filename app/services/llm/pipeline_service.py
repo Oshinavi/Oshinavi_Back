@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Optional, Tuple, List
 
 from app.services.llm.chains import (
     TranslationChain,
@@ -7,16 +7,21 @@ from app.services.llm.chains import (
     ScheduleChain,
     ReplyChain,
 )
-from app.services.llm.masking_utils import (
-    mask_rt_prefix,
-    restore_rt_prefix,
-    mask_hash_emoji,
-    restore_hash_emoji,
-    extract_emojis,
-)
+from app.services.llm.text_utils import TextMasker
 from app.schemas.llm_schema import TranslationResult, ReplyResult
 
+mask_rt_prefix = TextMasker.mask_rt_prefix
+restore_rt_prefix = TextMasker.restore_rt_prefix
+mask_hashtags = TextMasker.mask_hashtags
+restore_hashtags = TextMasker.restore_hashtags
+extract_emojis = TextMasker.extract_emojis
+
+
 class LLMPipelineService:
+    """
+    LLM 기반 파이프라인 서비스
+    - 번역, 분류, 일정 추출, 리플라이 생성 전체 흐름 관리
+    """
     def __init__(self, rag_service):
         self.trans_chain = TranslationChain(rag_service)
         self.class_chain = ClassificationChain(rag_service)
@@ -24,47 +29,55 @@ class LLMPipelineService:
         self.reply_chain = ReplyChain()
 
     async def translate(self, text: str, timestamp: str) -> TranslationResult:
-        # 1) RT/해시태그 마스킹 & 이모지 보존
-        masked, hash_serialized = mask_hash_emoji(text)
-        masked, rt_prefix       = mask_rt_prefix(masked)
-        orig_emojis             = extract_emojis(text)
+        """
+        번역 파이프라인:
+        1) 해시태그, RT 접두사 마스킹 및 이모지 보존
+        2) LLM 번역 실행
+        3) 마스킹 복원 및 누락 이모지 추가
+        """
+        # 1) 전처리
+        masked, tags = mask_hashtags(text)
+        masked, rt_prefix = mask_rt_prefix(masked)
+        emojis = extract_emojis(text)
 
-        # 2) 번역 체인 실행 (RAG + LLM)
+        # 2) 번역 실행 (동기 체인을 각각 개별 스레드로)
         translated_masked = await asyncio.to_thread(
             self.trans_chain.run, masked, timestamp
         )
 
-        # 3) 마스킹 토큰 복원
-        trans = restore_rt_prefix(translated_masked, rt_prefix)
-        trans = restore_hash_emoji(trans, hash_serialized)
-
-        # 4) 누락된 이모지 뒤에 추가
-        missing = [e for e in orig_emojis if e not in trans]
+        # 3) 후처리
+        restored = restore_rt_prefix(translated_masked, rt_prefix)
+        restored = restore_hashtags(restored, tags)
+        missing = [e for e in emojis if e not in restored]
         if missing:
-            trans += "".join(missing)
+            restored += "".join(missing)
 
-        # 아직 분류/스케줄은 실행하지 않으므로 placeholder 리턴
         return TranslationResult(
-            translated=trans,
+            translated=restored,
             category="일반",
             start=None,
             end=None,
         )
 
-    async def classify(self, text: str) -> tuple[str, Optional[str], Optional[str]]:
+    async def classify(self, text: str) -> Tuple[str, Optional[str], Optional[str]]:
+        """
+        분류 및 제목/상세정보 추출
+        """
         raw = await asyncio.to_thread(self.class_chain.run, text)
-        # raw: "카테고리 ␞ 제목 ␞ 상세정보"
-        parts = raw.strip().split("␞")
+        parts = [p.strip() for p in raw.split("␞")]  # 카테고리␞제목␞상세정보
         if len(parts) != 3:
             return "일반", None, None
-        cat, title, desc = (p.strip() for p in parts)
+        cat, title, desc = parts
         return (
             cat,
             None if title.lower() == "none" else title,
             None if desc.lower()  == "none" else desc,
         )
 
-    async def extract_schedule(self, text: str, timestamp: str) -> tuple[str, str]:
+    async def extract_schedule(self, text: str, timestamp: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        일정(start, end) 정보 추출
+        """
         raw = await asyncio.to_thread(self.sched_chain.run, text, timestamp)
         start, end = [s.strip() for s in raw.split("␞", 1)]
         return (
@@ -72,9 +85,14 @@ class LLMPipelineService:
             None if end.lower()   == "none" else end,
         )
 
-    async def generate_reply(self, text: str, contexts: list[str]) -> ReplyResult:
-        contexts_str = "\n".join(f"- {c}" for c in contexts)
-        def _sync_run():
-            return self.reply_chain.run(text, contexts_str)
-        reply_text = await asyncio.to_thread(_sync_run)
+    async def generate_reply(self, text: str, contexts: List[str]) -> ReplyResult:
+        """
+        자동 리플라이 생성
+        """
+        # contexts는 리스트 타입으로 직접 전달
+        reply_text = await asyncio.to_thread(
+            self.reply_chain.run,
+            text,
+            contexts
+        )
         return ReplyResult(reply_text=reply_text)

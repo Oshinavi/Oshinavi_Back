@@ -1,6 +1,7 @@
 import json
-import os
 from enum import Enum
+from typing import Dict
+from pathlib import Path
 
 class PromptType(str, Enum):
     TRANSLATE = "translate"
@@ -9,7 +10,7 @@ class PromptType(str, Enum):
     REPLY     = "reply"
 
 # 각 단계별 시스템 프롬프트, 핵심 지침 유지
-SYSTEM_PROMPTS: dict[PromptType, str] = {
+SYSTEM_PROMPTS: Dict[PromptType, str] = {
     PromptType.TRANSLATE: """
 You are an AI translator. Your task is to translate Twitter's Japanese text into natural, cute Korean, while preserving specific elements.
 
@@ -120,18 +121,22 @@ Output only the reply without explanations.
 _few_shot_cache: dict[str, str] = {}
 
 def get_few_shot_examples(pt: PromptType) -> str:
+    """
+    few-shot 예시를 파일에서 로드 -> 캐싱하여 반환
+    """
     global _few_shot_cache
-    if _few_shot_cache is None:
-        path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "few_shot.json")
+    if not _few_shot_cache:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        path = base_dir / "config" / "few_shot.json"
+        if not path.exists():
+            return ""
         with open(path, encoding="utf-8") as f:
             _few_shot_cache = json.load(f)
 
     entry = _few_shot_cache.get(pt.value, {})
     if pt == PromptType.TRANSLATE:
         examples = entry.get("examples", [])
-        lines = []
-        for ex in examples:
-            lines.append(f"입력:\n{ex['input']}\n출력:\n{ex['output']}")
+        lines = [f"입력:\n{ex['input']}\n출력:\n{ex['output']}" for ex in examples]
         return "\n\n".join(lines).strip()
 
     if pt == PromptType.CLASSIFY:
@@ -140,15 +145,16 @@ def get_few_shot_examples(pt: PromptType) -> str:
 
     if pt == PromptType.SCHEDULE:
         examples = entry.get("examples", [])
-        blocks = []
-        for ex in examples:
-            blocks.append(
+        blocks = [
+            (
                 f"【예시】\n"
                 f"타임스탬프: {ex['timestamp']}\n"
                 f"텍스트: {ex['text']}\n"
                 f"출력: {ex['label']}"
             )
+            for ex in examples
+        ]
         return "\n\n".join(blocks).strip()
 
-    # REPLY 예시가 없다면 빈 문자열
+    # REPLY 예시가 없다면 빈 문자열 반환
     return ""

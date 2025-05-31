@@ -24,7 +24,7 @@ class ScheduleService:
     ):
         """
         - db: 비동기 DB 세션
-        - twitter_svc: 사용자 트위터 ID 확인용 서비스 (Optional)
+        - twitter_svc: 사용자 트위터 ID 확인용 서비스
         """
         self.db = db
         self.twitter_svc = twitter_svc
@@ -56,10 +56,10 @@ class ScheduleService:
         created_by_user_id: int
     ) -> Schedule:
         """
-        새로운 일정을 생성하여 DB에 저장
-        - 시작/종료 시간 유효성 검증
-        - 관련 트위터 사용자 내부 ID 조회
-        - Schedule 모델 생성 후 커밋
+        새로운 일정 생성 및 DB 저장
+        1) 시작/종료 시간 검증
+        2) 관련 트위터 사용자 내부 ID 조회
+        3) Schedule 모델 생성 → commit → refresh → 반환
         """
         # 종료 시간이 시작 시간보다 앞설 경우 에러
         if end_at < start_at:
@@ -99,8 +99,11 @@ class ScheduleService:
     ) -> Schedule:
         """
         기존 일정 수정
-        - 일정 존재 여부 및 사용 권한 검증
-        - 필드별 변경 사항 적용 후 저장
+        1) Schedule 조회 (없으면 BadRequestError)
+        2) 생성자(user_id)와 요청자(user_id) 일치 확인 (아니면 UnauthorizedError)
+        3) 시간이 주어졌다면 유효성 재검증
+        4) 관련 트위터 사용자 변경 시 내부 ID 재조회
+        5) 각 필드별로 유효하면 변경 → commit → refresh → 반환
         """
         # 1) 일정 조회
         sched = await self.db.get(Schedule, schedule_id)
@@ -122,11 +125,16 @@ class ScheduleService:
             )
 
         # 5) 각 필드에 변경된 값 적용
-        if title:       sched.title       = title
-        if category:    sched.category    = category
-        if start_at:    sched.start_at    = start_at
-        if end_at:      sched.end_at      = end_at
-        if description: sched.description = description
+        if title:
+            sched.title = title
+        if category:
+            sched.category = category
+        if start_at:
+            sched.start_at = start_at
+        if end_at:
+            sched.end_at = end_at
+        if description:
+            sched.description = description
 
         # 6) 변경 사항 커밋 및 최신 상태 반영
         self.db.add(sched)
@@ -137,8 +145,9 @@ class ScheduleService:
     async def delete_schedule(self, schedule_id: int, user_id: int) -> None:
         """
         일정 삭제
-        - 일정 존재 여부 및 삭제 권한 검증
-        - 삭제 후 커밋
+        1) Schedule 조회 (없으면 BadRequestError)
+        2) 생성자와 요청자(user_id) 일치 확인 (아니면 UnauthorizedError)
+        3) delete → commit
         """
         sched = await self.db.get(Schedule, schedule_id)
         if not sched:
@@ -146,23 +155,23 @@ class ScheduleService:
         if sched.created_by_user_id != user_id:
             raise UnauthorizedError("삭제 권한이 없습니다.")
 
-        # DB에서 일정 삭제 및 커밋
         await self.db.delete(sched)
         await self.db.commit()
 
     async def list_my_oshi_schedules(self, user_id: int) -> List[Schedule]:
         """
-        오시 일정 조회 및 반환
+        오시 일정 조회
+        1) UserOshi 테이블에서 해당 유저의 oshi_internal_id 조회
+        2) 관련된 Schedule 모두 조회하여 시작 시간 기준 정렬 후 반환
         """
-
-        # UserOshi에서 유저의 oshi_internal_id 조회
+        # 1) UserOshi 조회
         user_oshi_query = select(UserOshi).where(UserOshi.user_id == user_id)
         user_oshi_result = await self.db.execute(user_oshi_query)
         user_oshi = user_oshi_result.scalars().first()
         if not user_oshi:
             return []
 
-        # 해당 오시 일정 조회 및 정렬
+        # 2) Schedule 조회 → 정렬
         oshi_schedules_query = (
             select(Schedule)
             .where(Schedule.related_twitter_internal_id == user_oshi.oshi_internal_id)

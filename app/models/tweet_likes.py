@@ -5,6 +5,7 @@ from app.core.database import Base
 class TweetLikes(Base):
     """TODO"""
     """
+    !!아직 API 로직 정의되지 않았음.!!
     트윗 좋아요(TweetLikes) 모델
     - 사용자가 특정 트윗(Post)에 좋아요를 표시한 기록 저장
     """

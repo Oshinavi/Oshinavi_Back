@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
@@ -14,6 +14,7 @@ from app.schemas.schedule_schema import (
 from app.services.schedule_service import ScheduleService
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.services.twitter.twitter_user_service import TwitterUserService
+from app.utils.exceptions import BadRequestError
 
 router = APIRouter(
     prefix="/schedules",
@@ -48,10 +49,7 @@ def _get_twitter_services_for_user(user: User) -> TwitterUserService:
     """
     internal_id: Optional[str] = user.twitter_user_internal_id
     if not internal_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="먼저 트위터 계정을 연결해 주세요."
-        )
+        raise BadRequestError("먼저 트위터 계정을 연결해 주세요.")
     client_svc = TwitterClientService(user_internal_id=internal_id)
     return TwitterUserService(client_svc)
 
@@ -73,22 +71,16 @@ async def create_schedule(
     twitter_svc = _get_twitter_services_for_user(current_user)
     schedule_service = ScheduleService(db, twitter_svc)
 
-    try:
-        new_schedule = await schedule_service.create_schedule(
-            title=req.title,
-            category=req.category,
-            start_at=req.start_at,
-            end_at=req.end_at,
-            description=req.description,
-            related_twitter_screen_name=req.related_twitter_screen_name,
-            created_by_user_id=current_user.id,
-        )
-        return to_schedule_response(new_schedule)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc)
-        )
+    new_schedule = await schedule_service.create_schedule(
+        title=req.title,
+        category=req.category,
+        start_at=req.start_at,
+        end_at=req.end_at,
+        description=req.description,
+        related_twitter_screen_name=req.related_twitter_screen_name,
+        created_by_user_id=current_user.id,
+    )
+    return to_schedule_response(new_schedule)
 
 
 @router.get("", response_model=List[ScheduleResponse])
@@ -100,14 +92,8 @@ async def list_my_oshi_schedules(
     로그인 유저가 오시로 등록한 트위터 계정 기반으로 일정 조회
     """
     schedule_service = ScheduleService(db)
-    try:
-        schedules = await schedule_service.list_my_oshi_schedules(current_user.id)
-        return [to_schedule_response(s) for s in schedules]
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc)
-        )
+    schedules = await schedule_service.list_my_oshi_schedules(current_user.id)
+    return [to_schedule_response(s) for s in schedules]
 
 
 @router.put("/{schedule_id}", response_model=ScheduleResponse)
@@ -123,18 +109,13 @@ async def update_schedule(
     """
     twitter_svc = _get_twitter_services_for_user(current_user)
     schedule_service = ScheduleService(db, twitter_svc)
-    try:
-        updated_schedule = await schedule_service.edit_schedule(
-            schedule_id,
-            current_user.id,
-            **req.model_dump(exclude_unset=True)
-        )
-        return to_schedule_response(updated_schedule)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc)
-        )
+
+    updated_schedule = await schedule_service.edit_schedule(
+        schedule_id,
+        current_user.id,
+        **req.model_dump(exclude_unset=True)
+    )
+    return to_schedule_response(updated_schedule)
 
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_200_OK)
@@ -148,11 +129,6 @@ async def delete_schedule(
     - 소유권 확인 후 ScheduleService.delete_schedule 호출
     """
     schedule_service = ScheduleService(db)
-    try:
-        await schedule_service.delete_schedule(schedule_id, current_user.id)
-        return {"message": "삭제 성공"}
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc)
-        )
+
+    await schedule_service.delete_schedule(schedule_id, current_user.id)
+    return {"message": "삭제 성공"}

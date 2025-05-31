@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.jwt.blocklist import jwt_blocklist
+from app.utils.exceptions import UnauthorizedError
 
 router = APIRouter(
-    prefix="/protected",  # main.py 에서 "/api" 와 결합되어 "/api/protected" 으로 라우팅
+    prefix="/protected",
     tags=["Protected"],
 )
 
@@ -29,23 +30,14 @@ def _validate_jwt_token(token: str) -> str:
         jti: str = payload.get("jti")
         if not username or not jti:
             # 필수 클레임 누락 시 인증 실패
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="토큰이 유효하지 않습니다."
-            )
+            raise UnauthorizedError("토큰이 유효하지 않습니다.")
         # 로그아웃된 토큰인지 확인
         if jti in jwt_blocklist:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="토큰이 무효화되었습니다."
-            )
+            raise UnauthorizedError("토큰이 무효화되었습니다.")
         return username
     except JWTError:
         # 디코딩 오류 시 인증 실패
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="토큰 인증 실패"
-        )
+        raise UnauthorizedError("토큰 인증 실패")
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
     """

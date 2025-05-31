@@ -23,16 +23,15 @@ class TwitterUserService:
     @staticmethod
     def _fix_encoding(text: str | None) -> str | None:
         """
-        잘못 Latin-1 로 디코딩된 UTF-8 문자열을 복구
+        잘못 Latin-1로 디코딩된 UTF-8 문자열을 복구
         정상 문자열은 그대로 반환
         """
         if text is None:
             return None
-
-        logger.debug(f"[_fix_encoding] BEFORE: {repr(text)}")
+        logger.debug("[_fix_encoding] BEFORE: %r", text)
         try:
             fixed = text.encode("latin1").decode("utf-8")
-            logger.debug(f"[_fix_encoding] AFTER : {repr(fixed)}")
+            logger.debug("[_fix_encoding] AFTER : %r", fixed)
             return fixed
         except UnicodeEncodeError:
             return text
@@ -40,6 +39,18 @@ class TwitterUserService:
     async def get_user_info(self, screen_name: str) -> dict:
         """
         지정된 screen_name의 사용자 정보를 조회
+        반환값:
+            {
+                "id": str (internal ID),
+                "username": str,
+                "bio": str,
+                "profile_image_url": str,
+                "profile_banner_url": str,
+                "followers_count": int,
+                "following_count": int,
+            }
+        Raises:
+            NotFoundError: 사용자 정보를 찾지 못한 경우
         """
         await self.client_service.ensure_login()
         client = self.client_service.get_client()
@@ -59,13 +70,20 @@ class TwitterUserService:
             "following_count": user.following_count,
         }
 
+
     async def get_user_id(self, screen_name: str) -> str:
+        """
+        screen_name을 통해 internal ID(str)만 반환
+        """
         info = await self.get_user_info(screen_name)
         user_id = str(info["id"])
-        logger.info(f"[TwitterUserService] {screen_name} → id: {user_id}")
+        logger.info("[TwitterUserService] %s → id: %s", screen_name, user_id)
         return user_id
 
     async def user_exists(self, screen_name: str) -> bool:
+        """
+        해당 screenname 사용자가 존재하는지 확인
+        """
         try:
             await self.client_service.ensure_login()
             client = self.client_service.get_client()

@@ -21,7 +21,6 @@ class TwitterClientService:
         self._client = Client("en-US")
         self._logged_in = False
 
-        # per-user cookie 경로: twitter_cookies_<user_id>.json
         self.cookie_path = MASTER_COOKIE_FILE.parent / f"twitter_cookies_{self.user_id}.json"
 
     async def ensure_login(self) -> None:
@@ -33,34 +32,40 @@ class TwitterClientService:
             self._logged_in = True
 
     async def _load_cookies(self) -> None:
+        """
+        1) 마스터 쿠키 로드
+        2) per-user 쿠키가 있으면 덮어쓰기
+        """
         # 1) 마스터 쿠키
         if not MASTER_COOKIE_FILE.exists():
-            raise FileNotFoundError(f"Master cookie file not found: {MASTER_COOKIE_FILE!r}")
+            raise FileNotFoundError(f"Master cookie file not found: {MASTER_COOKIE_FILE}")
         master_cookies = json.loads(MASTER_COOKIE_FILE.read_text(encoding="utf-8"))
         self._client.set_cookies(master_cookies)
-        logger.info("✅ Master cookies loaded")
+        logger.info("Master cookies loaded")
 
         # 2) per-user 쿠키(있으면)
         if self.cookie_path.exists():
             user_cookies = json.loads(self.cookie_path.read_text(encoding="utf-8"))
             self._client.set_cookies(user_cookies)
-            logger.info(f"✅ User cookies loaded: {self.cookie_path!r}")
+            logger.info("User cookies loaded: %s", self.cookie_path)
 
     def set_initial_cookies(self, ct0: str, auth_token: str) -> None:
         """
-        프론트 전달 ct0/auth_token 으로 덮어쓰기
+        프론트엔드에서 전달된 ct0/auth_token으로 덮어쓰기
         """
         self._client.set_cookies({"ct0": ct0, "auth_token": auth_token})
 
     def get_client(self) -> Client:
+        """
+        내부 Client 인스턴스 반환
+        """
         return self._client
 
     def save_cookies_to_file(self) -> None:
         """
         현재 세션 쿠키를 per-user 파일로 저장
         """
-        # httpx.Cookies.jar → dict 변환
         cookies = {cookie.name: cookie.value for cookie in self._client.http.cookies.jar}
         self.cookie_path.parent.mkdir(parents=True, exist_ok=True)
         self.cookie_path.write_text(json.dumps(cookies), encoding="utf-8")
-        logger.info(f"✅ Saved Twitter cookies JSON: {self.cookie_path!r}")
+        logger.info("Saved Twitter cookies JSON: %s", self.cookie_path)

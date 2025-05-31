@@ -17,18 +17,8 @@ class RAGService:
         index_path: str,
         meta_path: str,
         top_k: int = 15,
-        lexical_weight: float = 0.7,   # 단어 매칭 기반 검색 결과의 기여도 조정 하이퍼파라미터
+        lexical_weight: float = 0.7,
     ):
-        """
-        Args:
-          index_path:       FAISS 인덱스 파일 경로
-          meta_path:        JSON 메타데이터 파일 경로
-          top_k:            반환할 컨텍스트 최대 개수
-          lexical_weight:   BM25(Lexical) 점수 가중치(semantic 점수와 합산)
-
-        lexical_weight 값이 0.0에 가까우면 의미 기반 검색 우선,
-        1.0 이상이면 BM25 lexical 검색 영향력 증가
-        """
         # 1) FAISS 인덱스 로드 (semantic retrieval)
         self.index = faiss.read_index(index_path)
 
@@ -62,13 +52,13 @@ class RAGService:
         주어진 쿼리에 대해 semantic + lexical 검색을 결합하여
         상위 top_k개의 "원문 → 번역" 컨텍스트 목록을 반환
         """
-
-        # 1) Semantic 검색: FAISS 유사도 검색
+        # 1) Semantic 검색: FAISS cosine similarity 검색
         query_embedding = self.embedder.encode([query])
-        distances, indices = self.index.search(query_embedding, self.top_k)
+        sims, indices = self.index.search(query_embedding, self.top_k)
+        sims = sims[0]  # inner-product 값 == cosine similarity (L2-normalized vectors)
         semantic_indices = [int(i) for i in indices[0] if 0 <= i < len(self.source_texts)]
 
-        # 2) Lexical 검색: BM25 점수 계산 (형태소 토큰 사용)
+        # 2) Lexical 검색: BM25 점수 계산
         tokenized_query = self._tokenize(query)
         bm25_scores = self.bm25.get_scores(tokenized_query)
         top_lex_indices = sorted(
@@ -77,32 +67,33 @@ class RAGService:
             reverse=True
         )[: self.top_k]
 
-        # 3) ID 합집합 및 점수 결합
+        # 3) 후보 인덱스 집합
         candidate_indices = set(semantic_indices) | set(top_lex_indices)
 
-        # 4) Semantic distance → 유사도 점수화
-        max_distance = max(distances[0]) if distances.size else 1.0
-        sem_score_map = {
-            semantic_indices[i]: (max_distance - distances[0][i]) / max_distance
+        # 4) Semantic similarity 정규화
+        max_sim = float(sims.max()) if sims.size > 0 else 1.0
+        sem_score_map: Dict[int, float] = {
+            semantic_indices[i]: sims[i] / max_sim
             for i in range(len(semantic_indices))
         }
 
         # 5) BM25 점수 정규화
-        max_bm25 = bm25_scores.max() if hasattr(bm25_scores, "size") and bm25_scores.size > 0 else max(bm25_scores) if bm25_scores else 0.5
+        max_bm = float(bm25_scores.max()) if bm25_scores.size > 0 else 1.0
+
+        # 6) combined score 계산
         combined_scores: List[Tuple[int, float]] = []
         for idx in candidate_indices:
-            sem_score = sem_score_map.get(idx, 0.0)
-            lex_score = (bm25_scores[idx] / max_bm25) if max_bm25 > 0 else 0.0
-            total_score = sem_score + self.lexical_weight * lex_score
-            combined_scores.append((idx, total_score))
+            sem_sc = sem_score_map.get(idx, 0.0)
+            lex_sc = (bm25_scores[idx] / max_bm) if max_bm > 0 else 0.0
+            total_sc = sem_sc + self.lexical_weight * lex_sc
+            combined_scores.append((idx, total_sc))
 
-        # 6) 점수 내림차순 정렬 및 상위 top_k 선택
+        # 7) 상위 top_k 선택
         combined_scores.sort(key=lambda x: x[1], reverse=True)
-        selected_indices = [idx for idx, _ in combined_scores[: self.top_k]]
+        selected = [idx for idx, _ in combined_scores[: self.top_k]]
 
-        # 7) "원문 → 번역" 형식으로 컨텍스트 리스트 반환
-        contexts = [
+        # 8) “원문 → 번역” 컨텍스트 반환
+        return [
             f"{self.metadata[i]['text']} → {self.metadata[i]['translation']}"
-            for i in selected_indices
+            for i in selected
         ]
-        return contexts
