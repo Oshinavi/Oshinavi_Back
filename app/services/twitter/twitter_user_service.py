@@ -11,16 +11,12 @@ class TwitterUserService:
     트위터 유저 정보 조회 서비스 클래스
     트위터 사용자의 기본 정보를 API를 통해 취득
     """
-    def __init__(
-        self,
-        client_service: TwitterClientService
-    ):
+    def __init__(self, client_service: TwitterClientService):
         """
         - client_service: TwitterClientService 인스턴스를 주입받기
         """
         self.client_service = client_service
 
-    # 문자열 UTF-8 인코딩 복구
     @staticmethod
     def _fix_encoding(text: str | None) -> str | None:
         """
@@ -53,22 +49,37 @@ class TwitterUserService:
         Raises:
             NotFoundError: 사용자 정보를 찾지 못한 경우
         """
+        # 1) 로그인된 TwitterClientService를 통해 client 인스턴스 획득
         await self.client_service.ensure_login()
         client = self.client_service.get_client()
+
+        # 2) 실제 트위터 API 호출
         try:
             user = await client.get_user_by_screen_name(screen_name)
+
         except TwikitNotFound:
             logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (TwikitNotFound)")
             raise NotFoundError(f"User '{screen_name}' not found")
+
         except Exception as e:
+            msg = str(e)
+            if "The user does not exist." in msg:
+                logger.warning(
+                    f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (Exception 메시지로 감지): {msg}"
+                )
+                raise NotFoundError(f"User '{screen_name}' not found")
+
             logger.error(f"트위터 API 호출 실패 ({screen_name}): {e}")
             raise
 
+        # 3) user가 None으로 돌아온 경우도 404로 처리
         if not user:
-            logger.warning(f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (None 반환)")
+            logger.warning(
+                f"Twitter 사용자 '{screen_name}' 정보를 찾을 수 없음 (None 반환)"
+            )
             raise NotFoundError(f"User '{screen_name}' not found")
 
-        logger.info(f"[실제값은] {screen_name} → id: {user.id}")
+        # 4) 정상 조회된 경우 필요한 필드를 리턴
         return {
             "id": user.id,
             "username": self._fix_encoding(user.name),

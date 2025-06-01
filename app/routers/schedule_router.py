@@ -1,6 +1,8 @@
+import logging
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
 
 from app.core.database import get_db_session
 from app.dependencies import get_current_user
@@ -15,6 +17,8 @@ from app.services.schedule_service import ScheduleService
 from app.services.twitter.twitter_client_service import TwitterClientService
 from app.services.twitter.twitter_user_service import TwitterUserService
 from app.utils.exceptions import BadRequestError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/schedules",
@@ -42,6 +46,7 @@ def to_schedule_response(schedule: Schedule) -> ScheduleResponse:
         created_by_user_id=schedule.created_by_user_id,
     )
 
+
 def _get_twitter_services_for_user(user: User) -> TwitterUserService:
     """
     현재 로그인된 유저의 twitter_internal_id를 기반으로
@@ -49,9 +54,11 @@ def _get_twitter_services_for_user(user: User) -> TwitterUserService:
     """
     internal_id: Optional[str] = user.twitter_user_internal_id
     if not internal_id:
+        # ApiError 중 하나(400 Bad Request) 던지기
         raise BadRequestError("먼저 트위터 계정을 연결해 주세요.")
     client_svc = TwitterClientService(user_internal_id=internal_id)
     return TwitterUserService(client_svc)
+
 
 @router.post(
     "",
@@ -68,9 +75,13 @@ async def create_schedule(
     - 트위터 연결 사용자 확인
     - ScheduleService를 통해 일정 생성
     """
+    # 1) 로그인된 유저의 트위터 클라이언트 서비스 준비
     twitter_svc = _get_twitter_services_for_user(current_user)
+
+    # 2) 스케줄 서비스 생성 (DB 세션 + twitter_svc 주입)
     schedule_service = ScheduleService(db, twitter_svc)
 
+    # 3) 실제 일정 생성 로직 호출 (여기서 BadRequestError, NotFoundError 등 던져질 수 있음)
     new_schedule = await schedule_service.create_schedule(
         title=req.title,
         category=req.category,
@@ -129,6 +140,5 @@ async def delete_schedule(
     - 소유권 확인 후 ScheduleService.delete_schedule 호출
     """
     schedule_service = ScheduleService(db)
-
     await schedule_service.delete_schedule(schedule_id, current_user.id)
     return {"message": "삭제 성공"}
