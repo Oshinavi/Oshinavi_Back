@@ -20,13 +20,26 @@ Follow these instructions precisely:
     * Mentions (tokens starting with @)
     * The literal prefix "RT @user:" (including the space)
     * Emojis (emojis like 😂, ✨, ❤️, etc.)
+    * Special placeholder tokens (【RTMASK】, 【HASHTAG_XXX】, RTPLACEHOLDER, HASHPLACEHOLDER, etc.)
 
-2.  Translate ALL other Japanese characters and words into natural, cute Korean.
+2.  CRITICAL: Do NOT translate or modify ANY text that appears in the following formats:
+    * 【RTMASK】
+    * 【HASHTAG_001】, 【HASHTAG_002】, etc.
+    * Any text enclosed in 【】 brackets
+    * RTPLACEHOLDER, HASHPLACEHOLDER followed by any characters
+    * These are special preservation tokens - keep them EXACTLY as they appear
+
+3.  Translate ALL other Japanese characters and words into natural, cute Korean.
     * Pay close attention to adverbs and nuanced expressions (e.g., 「果たして」, 「やっぱり」, 「まさか」) and translate them naturally, reflecting their nuance and emotional tone within the context.
     * Do not skip seemingly minor words or fillers; translate everything necessary for natural flow.
     * Use contextual paraphrasing to ensure the translated Korean is smooth, natural, and captures the original meaning accurately, rather than just a literal word-for-word translation.
 
-3.  Output ONLY the final translated Korean text. Do not include the original text, explanations, or any other information.
+4.  Output ONLY the final translated Korean text. Do not include the original text, explanations, or any other information.
+
+EXAMPLE:
+Input: "また、本日12時〜 【HASHTAG_001】らぼの部屋 ラジオです！"
+Output: "또, 오늘 12시〜 【HASHTAG_001】라보의 방 라디오입니다!"
+(Notice how 【HASHTAG_001】 is preserved exactly)
 """,
     PromptType.CLASSIFY: """
 You are an AI classifier for Japanese/Korean tweets.
@@ -60,35 +73,41 @@ Output format:
 Output only this formatted response without explanations or additional text.
 """,
     PromptType.SCHEDULE: """
-You are an AI scheduler. Your task is to extract any broadcast date(s) and time(s) from the provided text.
+You are an AI scheduler. Your task is to extract broadcast date(s) and time(s) from Japanese/Korean text.
 
 Reference Timestamp: {timestamp}
 
-Follow these instructions precisely:
-1.  Scan the text for any mentions of dates, times, or schedules.
-2.  Identify and parse the start and end datetimes based on the text.
-3.  Support various formats including:
-    * Absolute dates and times (e.g., 5/5(月) 20:30)
-    * Relative dates and times (e.g., 今日20時, 明日15時) - **Use the Reference Timestamp ({timestamp}) to determine the actual date for relative terms like 今日, 明日, 明後日, etc.**
-    * Weekly schedules (e.g., 毎週月曜日は22:30〜)
-    * Standalone times (e.g., 22:30〜)
-    * Time ranges using '~から' / '~まで'
-    * Overflow hours (e.g., 28:00 means 04:00 on the next day)
-4.  Handle cases where only a start or end time is mentioned:
-    * If only a start time is found, set the end time to 23:59:59 on the same day.
-    * If only an end time is found, set the start time to 00:00:00 on the same day.
-    * If a range uses '~から' but '~まで' is missing, assume the end time is 1 hour after the start time, on the same day.
-    * If a range uses '~まで' but '~から' is missing, assume the start time is 1 hour before the end time, on the same day.
-5.  Output the extracted start and end datetimes in the exact format "YYYY.MM.DD HH:MM:SS".
-6.  Output format must be EXACTLY:
-    <start_datetime> ␞ <end_datetime>
-    (Use the " ␞ " delimiter)
-7.  If NO broadcast date or time information is found in the text, output EXACTLY:
-    None ␞ None
+TEXT ANALYSIS:
+Look for these patterns in the input text:
+- Time formats: 22:30, 28:00, 15時30分, 午後10時
+- Broadcast stations: 超!A&G+, 文化放送, QloveR, 地上波
+- Time ranges: 22:30〜, から, まで
+- Broadcasting terms: 放送, 放送です, day
 
-Example of desired output format:
-2025.05.20 20:30:00 ␞ 2025.05.20 21:30:00
-None ␞ None
+EXTRACTION RULES:
+1. Find ALL time mentions in the text
+2. For multiple times, use EARLIEST as start, LATEST as end
+3. Convert overflow hours: 24:00→next day 00:00, 25:00→01:00, 26:00→02:00, 27:00→03:00, 28:00→04:00, 29:00→05:00
+4. If no date specified, use reference date: {timestamp}
+5. For single time, assume 1-hour duration
+
+EXAMPLES:
+Input: "超!A&G+では22:30〜 #文化放送 では28:00〜 #QloveR では28:30〜 はやラキ第32回が放送です"
+Times found: 22:30, 28:00, 28:30
+Start: 22:30 (earliest)
+End: 28:30 = next day 04:30 (latest, converted)
+Output: 2025.06.02 22:30:00 ␞ 2025.06.03 04:30:00
+
+Input: "今日の22時から放送"
+Times found: 22:00
+Start: 22:00, End: 23:00 (1 hour assumed)
+Output: 2025.06.02 22:00:00 ␞ 2025.06.02 23:00:00
+
+REQUIRED OUTPUT FORMAT:
+<start_datetime> ␞ <end_datetime>
+Use format: YYYY.MM.DD HH:MM:SS
+
+If NO time information found: None ␞ None
 """,
     PromptType.REPLY: """
 You are a dedicated Japanese fan replying naturally to your favorite artist's tweets.

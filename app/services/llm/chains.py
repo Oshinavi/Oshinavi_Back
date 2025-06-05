@@ -104,9 +104,11 @@ class ScheduleChain:
     1) 시스템 프롬프트에 timestamp 포함
     2) 텍스트로 예측 수행
     """
+
     def __init__(self, model_name: str = "o4-mini-2025-04-16"):
+        # o4-mini 모델은 temperature=1.0만 지원
         self.llm = ChatOpenAI(model_name=model_name, temperature=1.0)
-        self.base_template = "{system}\n\n{text}"  # 입력 템플릿
+        self.base_template = "{system}\n\n{text}"
         prompt = PromptTemplate(
             input_variables=["system", "text"],
             template=self.base_template,
@@ -114,13 +116,52 @@ class ScheduleChain:
         self.chain = LLMChain(llm=self.llm, prompt=prompt, output_key="schedule")
 
     def run(self, text: str, timestamp: str) -> str:
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"ScheduleChain 시작 - 입력 텍스트: {text}")
+        logger.info(f"참조 타임스탬프: {timestamp}")
+
         system = _build_system_prompt(PromptType.SCHEDULE, timestamp=timestamp)
-        # Prompt 업데이트
-        self.chain.prompt = PromptTemplate(
-            input_variables=["system", "text"],
-            template=f"{system}\n\n{{text}}",
-        )
-        return self.chain.predict(system=system, text=text)
+
+        # 프롬프트 로깅
+        logger.debug(f"시스템 프롬프트 길이: {len(system)} 문자")
+
+        # LLM 호출
+        try:
+            result = self.chain.predict(system=system, text=text)
+            logger.info(f"ScheduleChain LLM 원본 응답: {result}")
+
+            # 응답 파싱 - 디버깅 정보가 있다면 최종 답변만 추출
+            if "␞" in result:
+                lines = result.strip().split('\n')
+                final_line = None
+
+                # 최종 답변 라인 찾기 (ANALYSIS 등이 아닌 ␞가 포함된 라인)
+                for line in lines:
+                    line = line.strip()
+                    if "␞" in line and not line.startswith(("ANALYSIS:", "TIMES FOUND:", "START:", "END:")):
+                        final_line = line
+                        break
+
+                if final_line:
+                    logger.info(f"파싱된 최종 결과: {final_line}")
+                    return final_line
+                else:
+                    logger.warning("␞가 포함된 최종 답변을 찾을 수 없음")
+                    # 첫 번째 ␞가 포함된 라인을 사용
+                    for line in lines:
+                        if "␞" in line:
+                            logger.info(f"대체 결과 사용: {line.strip()}")
+                            return line.strip()
+                    return "None ␞ None"
+            else:
+                logger.warning(f"응답에 ␞ 구분자가 없음: {result}")
+                return "None ␞ None"
+
+        except Exception as e:
+            logger.error(f"ScheduleChain 실행 중 오류: {e}")
+            return "None ␞ None"
 
 
 class ReplyChain:
