@@ -14,22 +14,22 @@ class TextMasker:
     - 이모지(ex. 😂, 🌱 등) 추출
     """
 
-    # RT 토큰 - 번역되지 않을 독특한 형태
+    # RT 토큰
     RT_TOKEN = "【RTMASK】"
 
-    # 해시태그 플레이스홀더 - 번역되지 않을 형태
+    # 해시태그 플레이스홀더
     HASH_PLACEHOLDER_PREFIX = "【HASHTAG_"
     HASH_PLACEHOLDER_SUFFIX = "】"
 
     # "RT @username:" 패턴 (문장 맨 앞에만 적용)
     RT_PATTERN = re.compile(r"^RT @[\w]+:\s*")
 
-    # 해시태그 패턴: "#" 다음에 (영문자, 숫자, 언더바, 한글, 히라가나/가타카나, CJK 한자) 허용
+    # 해시태그 패턴
     HASHTAG_PATTERN = re.compile(
         r"#([A-Za-z0-9_가-힣\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]+)"
     )
 
-    # 이모지 추출 범위 (기본적인 Unicode 이모지)
+    # 이모지 추출 범위
     EMOJI_PATTERN = re.compile(
         r"[\U0001F300-\U0001F6FF"  # 기타 픽토그램
         r"\U0001F900-\U0001F9FF"  # 추가 보충 이모지
@@ -40,14 +40,14 @@ class TextMasker:
     @classmethod
     def mask_rt_prefix(cls, text: str) -> Tuple[str, Optional[str]]:
         """
-        'RT @username:' 형식을 번역되지 않는 안전한 토큰으로 치환.
+        'RT @username:' 형식을 번역되지 않는 안전한 토큰으로 치환
         - 반환값: (마스킹된 텍스트, 원본 prefix)
         """
         match = cls.RT_PATTERN.match(text)
         if not match:
             return text, None
 
-        prefix = match.group(0)  # ex) "RT @john_doe: "
+        prefix = match.group(0)  # ex) "RT @cocona_nonaka: "
         masked = text.replace(prefix, f"{cls.RT_TOKEN} ", 1)
         logger.debug(f"RT 마스킹: {prefix} -> {cls.RT_TOKEN}")
         return masked, prefix
@@ -67,13 +67,12 @@ class TextMasker:
     @classmethod
     def mask_hashtags(cls, text: str) -> Tuple[str, List[Tuple[str, str]]]:
         """
-        원문에서 해시태그를 찾아 번역되지 않는 안전한 플레이스홀더로 바꾸고,
-        원본 해시태그와 플레이스홀더 매핑을 반환.
+        원문에서 해시태그를 찾아 번역되지 않는 안전한 플레이스홀더로 바꾸고 원본 해시태그와 플레이스홀더 매핑을 반환
 
         플레이스홀더 형태: 【HASHTAG_001】
         - 반환값: (마스킹된 텍스트, [(플레이스홀더, "#원본태그"), ...])
         """
-        # 1) 원문에서 해시태그 전체를 찾는다
+        # 1) 원문에서 해시태그 전체 조회
         hashtags = cls.HASHTAG_PATTERN.findall(text)
         if not hashtags:
             return text, []
@@ -84,10 +83,10 @@ class TextMasker:
         for idx, body in enumerate(hashtags):
             full_tag = f"#{body}"
 
-            # 간단한 인덱스 기반 플레이스홀더 (더 안전함)
+            # 간단한 인덱스 기반 플레이스홀더
             placeholder = f"{cls.HASH_PLACEHOLDER_PREFIX}{idx + 1:03d}{cls.HASH_PLACEHOLDER_SUFFIX}"
 
-            # 발견되는 첫 번째 full_tag만 placeholder로 치환
+            # 발견되는 첫 번째 full_tag만 플레이스홀더로 치환
             if full_tag in masked:
                 masked = masked.replace(full_tag, placeholder, 1)
                 tag_mappings.append((placeholder, full_tag))
@@ -128,7 +127,7 @@ class TextMasker:
                         break
 
                 if not found:
-                    # 부분 매칭으로 시도 (숫자 부분만 남아있을 경우)
+                    # 부분 매칭 시도 (숫자 부분만 남아있을 경우)
                     prefix = cls.HASH_PLACEHOLDER_PREFIX
                     suffix = cls.HASH_PLACEHOLDER_SUFFIX
                     number_part = placeholder.replace(prefix, "").replace(suffix, "")
@@ -157,8 +156,6 @@ class TextMasker:
         """
         return cls.EMOJI_PATTERN.findall(text)
 
-
-# 타입 힌트 문제를 완전히 해결하고 싶다면 정적 메서드로 변경하는 방법도 있습니다
 class TextMaskerStatic:
     """
     정적 메서드 버전 - 타입 힌트 오류 완전 해결
@@ -226,7 +223,6 @@ class TextMaskerStatic:
                 logger.debug(f"해시태그 복원 성공: {placeholder} -> {original_tag}")
             else:
                 logger.warning(f"플레이스홀더를 찾을 수 없음: {placeholder}")
-                # 복원 로직은 위와 동일...
 
         return restored
 

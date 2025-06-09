@@ -49,8 +49,7 @@ class RAGService:
 
     def get_context(self, query: str) -> List[str]:
         """
-        주어진 쿼리에 대해 semantic + lexical 검색을 결합하여
-        상위 top_k개의 "원문 → 번역" 컨텍스트 목록을 반환
+        주어진 쿼리에 대해 semantic + lexical 검색을 결합하여 상위 top_k개의 "원문 → 번역" 컨텍스트 목록을 반환
         """
         # 1) Semantic 검색: FAISS cosine similarity 검색
         query_embedding = self.embedder.encode([query])

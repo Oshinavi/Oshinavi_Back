@@ -132,7 +132,7 @@ class ScheduleChain:
             result = self.chain.predict(system=system, text=text)
             logger.info(f"ScheduleChain LLM 원본 응답: {result}")
 
-            # 응답 파싱 - 디버깅 정보가 있다면 최종 답변만 추출
+            # 응답 파싱 : 디버깅 정보가 있다면 최종 답변만 추출
             if "␞" in result:
                 lines = result.strip().split('\n')
                 final_line = None
